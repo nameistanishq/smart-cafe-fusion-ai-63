@@ -39,7 +39,7 @@ const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({ amount, onSuccess, 
     setIsLoading(true);
 
     try {
-      // Create Razorpay order
+      // Create order data for Razorpay
       const orderData = await createRazorpayOrder(amount);
       
       // Load Razorpay script if not already loaded
@@ -50,7 +50,7 @@ const RazorpayCheckout: React.FC<RazorpayCheckoutProps> = ({ amount, onSuccess, 
       // Configure Razorpay options
       const options = {
         key: 'rzp_test_POq2XFKRJtQMNr', // Test key ID
-        amount: amount * 100, // Razorpay amount is in paisa
+        amount: amount * 100, // Amount in paisa
         currency: "INR",
         name: "Smart Cafeteria",
         description: "Food Order Payment",

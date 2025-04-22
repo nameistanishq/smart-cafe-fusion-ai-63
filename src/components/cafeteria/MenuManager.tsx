@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,14 +45,21 @@ import {
 import { useToast } from "@/hooks/use-toast";
 
 const MenuManager: React.FC = () => {
-  const { menuItems, menuCategories, updateItemAvailability, addNewMenuItem } =
+  const { menuItems, menuCategories, updateItemAvailability, addNewMenuItem, refreshMenu } =
     useMenu();
   const { toast } = useToast();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
+
+  // Load menu data on component mount
+  useEffect(() => {
+    refreshMenu();
+  }, [refreshMenu]);
 
   // New menu item form state
   const [newItem, setNewItem] = useState<Omit<MenuItem, "id">>({
@@ -85,6 +92,11 @@ const MenuManager: React.FC = () => {
     }
   };
 
+  const handleEditItem = (item: MenuItem) => {
+    setSelectedItem(item);
+    setIsEditDialogOpen(true);
+  };
+
   const handleAddMenuItem = async () => {
     if (!newItem.name || !newItem.description || newItem.price <= 0 || !newItem.category) {
       toast({
@@ -114,6 +126,9 @@ const MenuManager: React.FC = () => {
         ingredients: [],
         tags: [],
       });
+      
+      // Refresh menu items
+      refreshMenu();
       
       toast({
         title: "Success",
@@ -422,7 +437,7 @@ const MenuManager: React.FC = () => {
                         align="end"
                         className="bg-cafe-surface border-cafe-primary/20 text-cafe-text"
                       >
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditItem(item)}>
                           <Edit className="h-4 w-4 mr-2" /> Edit Details
                         </DropdownMenuItem>
                         <DropdownMenuItem

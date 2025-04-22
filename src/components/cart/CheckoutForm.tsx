@@ -12,14 +12,8 @@ import { useCart } from "@/contexts/CartContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrder } from "@/contexts/OrderContext";
 import { useWallet } from "@/contexts/WalletContext";
-import { createRazorpayOrder, verifyRazorpayPayment } from "@/services/api";
+import RazorpayCheckout from "@/components/payment/RazorpayCheckout";
 import { useToast } from "@/hooks/use-toast";
-
-declare global {
-  interface Window {
-    Razorpay: any;
-  }
-}
 
 const CheckoutForm: React.FC = () => {
   const { cart, clearCart } = useCart();
@@ -29,15 +23,11 @@ const CheckoutForm: React.FC = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "wallet" | "upi">(
-    "wallet"
-  );
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "wallet" | "upi">("wallet");
   const [note, setNote] = useState("");
   const [processing, setProcessing] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleWalletPayment = async () => {
     if (cart.items.length === 0) {
       toast({
         variant: "destructive",
@@ -47,7 +37,7 @@ const CheckoutForm: React.FC = () => {
       return;
     }
     
-    if (paymentMethod === "wallet" && balance < cart.total) {
+    if (balance < cart.total) {
       toast({
         variant: "destructive",
         title: "Insufficient Balance",
@@ -59,60 +49,10 @@ const CheckoutForm: React.FC = () => {
     setProcessing(true);
     
     try {
-      // Handle payment based on selected method
-      let paymentStatus: "pending" | "completed" | "failed" = "pending";
+      // Process wallet payment
+      await addTransaction("payment", cart.total, "Payment for food order");
       
-      if (paymentMethod === "wallet") {
-        // Process wallet payment
-        await addTransaction("payment", cart.total, "Payment for food order");
-        paymentStatus = "completed";
-      } else if (paymentMethod === "upi" || paymentMethod === "card") {
-        // Process Razorpay payment
-        const response = await createRazorpayOrder(cart.total * 100); // Convert to paisa
-        
-        if (!response.id) {
-          throw new Error("Failed to create payment order");
-        }
-        
-        const options = {
-          key: "rzp_test_POq2XFKRJtQMNr",
-          amount: response.amount,
-          currency: "INR",
-          name: "Smart Cafeteria",
-          description: "Food Order Payment",
-          order_id: response.id,
-          handler: async function (response: any) {
-            // Verify payment
-            const isVerified = await verifyRazorpayPayment(
-              response.razorpay_payment_id,
-              response.razorpay_order_id,
-              response.razorpay_signature
-            );
-            
-            if (isVerified) {
-              paymentStatus = "completed";
-              // Continue with order creation
-            }
-          },
-          prefill: {
-            name: user?.name || "",
-            email: user?.email || "",
-          },
-          theme: {
-            color: "#FF7E33",
-          },
-        };
-        
-        // For demo purposes, we'll simulate a successful payment
-        paymentStatus = "completed";
-        
-        // In real implementation, we would launch Razorpay:
-        // const paymentObject = new window.Razorpay(options);
-        // paymentObject.open();
-        // return; // Return early as Razorpay will handle the rest
-      }
-      
-      // Create order
+      // Create order items
       const orderItems = cart.items.map(item => ({
         menuItemId: item.menuItem.id,
         name: item.menuItem.name,
@@ -129,8 +69,8 @@ const CheckoutForm: React.FC = () => {
         tax: cart.tax,
         total: cart.total,
         status: "confirmed",
-        paymentMethod,
-        paymentStatus,
+        paymentMethod: "wallet",
+        paymentStatus: "completed",
       });
       
       // Clear cart and navigate to order success
@@ -151,6 +91,111 @@ const CheckoutForm: React.FC = () => {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const handleCashPayment = async () => {
+    if (cart.items.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Empty Cart",
+        description: "Your cart is empty. Add items before checkout.",
+      });
+      return;
+    }
+    
+    setProcessing(true);
+    
+    try {
+      // Create order items
+      const orderItems = cart.items.map(item => ({
+        menuItemId: item.menuItem.id,
+        name: item.menuItem.name,
+        price: item.menuItem.price,
+        quantity: item.quantity,
+        subtotal: item.menuItem.price * item.quantity
+      }));
+      
+      const order = await createNewOrder({
+        userId: user?.id || "guest-user",
+        userName: user?.name || "Guest User",
+        items: orderItems,
+        subtotal: cart.subtotal,
+        tax: cart.tax,
+        total: cart.total,
+        status: "confirmed",
+        paymentMethod: "cash",
+        paymentStatus: "pending", // To be paid at counter
+      });
+      
+      // Clear cart and navigate to order success
+      clearCart();
+      navigate(`/order-status/${order.id}`);
+      
+      toast({
+        title: "Order Placed Successfully",
+        description: `Your order #${order.orderNumber} has been placed. Please pay at the counter.`,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Checkout failed";
+      toast({
+        variant: "destructive",
+        title: "Checkout Failed",
+        description: errorMessage,
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+  
+  const handlePaymentSuccess = async (orderId: string) => {
+    try {
+      // Create order items
+      const orderItems = cart.items.map(item => ({
+        menuItemId: item.menuItem.id,
+        name: item.menuItem.name,
+        price: item.menuItem.price,
+        quantity: item.quantity,
+        subtotal: item.menuItem.price * item.quantity
+      }));
+      
+      const order = await createNewOrder({
+        userId: user?.id || "guest-user",
+        userName: user?.name || "Guest User",
+        items: orderItems,
+        subtotal: cart.subtotal,
+        tax: cart.tax,
+        total: cart.total,
+        status: "confirmed",
+        paymentMethod: paymentMethod,
+        paymentStatus: "completed",
+        razorpayOrderId: orderId
+      });
+      
+      // Clear cart and navigate to order success
+      clearCart();
+      navigate(`/order-status/${order.id}`);
+    } catch (error) {
+      console.error("Error creating order:", error);
+    }
+  };
+  
+  const handlePaymentFailure = (error: string) => {
+    toast({
+      variant: "destructive",
+      title: "Payment Failed",
+      description: error,
+    });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (paymentMethod === "wallet") {
+      handleWalletPayment();
+    } else if (paymentMethod === "cash") {
+      handleCashPayment();
+    }
+    // For card and UPI, RazorpayCheckout will handle the payment
   };
 
   return (
@@ -259,13 +304,24 @@ const CheckoutForm: React.FC = () => {
             </div>
             
             {/* Submit Button */}
-            <Button
-              type="submit"
-              disabled={processing || cart.items.length === 0}
-              className="w-full bg-cafe-primary hover:bg-cafe-primary/90"
-            >
-              {processing ? "Processing..." : "Place Order"}
-            </Button>
+            {(paymentMethod === "wallet" || paymentMethod === "cash") ? (
+              <Button
+                type="submit"
+                disabled={processing || cart.items.length === 0}
+                className="w-full bg-cafe-primary hover:bg-cafe-primary/90"
+              >
+                {processing ? (
+                  <div className="h-5 w-5 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
+                ) : null}
+                {processing ? "Processing..." : "Place Order"}
+              </Button>
+            ) : (
+              <RazorpayCheckout 
+                amount={cart.total} 
+                onSuccess={handlePaymentSuccess}
+                onFailure={handlePaymentFailure}
+              />
+            )}
           </form>
         </CardContent>
       </Card>

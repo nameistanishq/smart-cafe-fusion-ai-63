@@ -1,5 +1,5 @@
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ const BillingSystem: React.FC = () => {
   const { menuItems, isLoading: isMenuLoading } = useMenu();
   const { createNewOrder } = useOrder();
   const { toast } = useToast();
+  const printPreviewRef = useRef<HTMLDivElement>(null);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItems, setSelectedItems] = useState<
@@ -156,15 +157,113 @@ const BillingSystem: React.FC = () => {
   };
 
   const handlePrintReceipt = () => {
-    // In a real implementation, this would trigger actual printing
-    // For now, we'll just simulate the printing with a timeout
-    setTimeout(() => {
+    if (printPreviewRef.current) {
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank', 'width=800,height=600');
+      
+      if (printWindow) {
+        const printContent = printPreviewRef.current.innerHTML;
+        
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Smart Cafeteria - Receipt</title>
+              <style>
+                body {
+                  font-family: Arial, sans-serif;
+                  padding: 20px;
+                  max-width: 300px;
+                  margin: 0 auto;
+                }
+                .receipt-header {
+                  text-align: center;
+                  margin-bottom: 15px;
+                }
+                .receipt-header h2 {
+                  margin: 0;
+                  font-size: 18px;
+                }
+                .receipt-header p {
+                  margin: 5px 0;
+                  font-size: 12px;
+                  color: #666;
+                }
+                .order-info {
+                  margin-bottom: 15px;
+                  font-size: 12px;
+                }
+                .order-info div {
+                  display: flex;
+                  justify-content: space-between;
+                  margin-bottom: 5px;
+                }
+                .items {
+                  margin-bottom: 15px;
+                }
+                .item {
+                  display: flex;
+                  justify-content: space-between;
+                  margin-bottom: 5px;
+                  font-size: 12px;
+                }
+                .separator {
+                  border-top: 1px dashed #ccc;
+                  margin: 10px 0;
+                }
+                .total-section div {
+                  display: flex;
+                  justify-content: space-between;
+                  margin-bottom: 5px;
+                  font-size: 12px;
+                }
+                .grand-total {
+                  font-weight: bold;
+                  font-size: 14px;
+                }
+                .footer {
+                  text-align: center;
+                  margin-top: 20px;
+                  font-size: 12px;
+                  color: #666;
+                }
+                @media print {
+                  body {
+                    width: 80mm; /* Standard thermal receipt width */
+                    padding: 0;
+                    margin: 0;
+                  }
+                }
+              </style>
+            </head>
+            <body>
+              ${printContent}
+              <div class="footer">
+                <p>Thank you for dining with us!</p>
+                <p>Visit us again soon.</p>
+                <script>
+                  window.onload = function() {
+                    window.print();
+                    setTimeout(function() {
+                      window.close();
+                    }, 500);
+                  };
+                </script>
+              </div>
+            </body>
+          </html>
+        `);
+        
+        printWindow.document.close();
+      }
+      
       toast({
         title: "Receipt Printed",
         description: "The receipt has been sent to the printer.",
       });
+      
       setIsPrintDialogOpen(false);
-    }, 1000);
+    }
   };
 
   // Filter menu items based on search term
@@ -428,79 +527,99 @@ const BillingSystem: React.FC = () => {
 
       {/* Print Receipt Dialog */}
       <Dialog open={isPrintDialogOpen} onOpenChange={setIsPrintDialogOpen}>
-        <DialogContent className="bg-cafe-surface border-cafe-primary/20 text-cafe-text">
+        <DialogContent className="bg-cafe-surface border-cafe-primary/20 text-cafe-text max-w-md">
           <DialogHeader>
-            <DialogTitle>Print Receipt</DialogTitle>
+            <DialogTitle>Receipt Preview</DialogTitle>
             <DialogDescription className="text-cafe-text/70">
-              Review the order details before printing.
+              Review the receipt before printing.
             </DialogDescription>
           </DialogHeader>
 
           {completedOrder && (
-            <div className="py-3 max-h-[400px] overflow-y-auto">
-              <div className="text-center mb-3">
+            <div className="py-3" ref={printPreviewRef}>
+              <div className="receipt-header text-center mb-3">
                 <h2 className="font-bold text-xl text-cafe-text">
                   Smart Cafeteria
                 </h2>
-                <p className="text-cafe-text/70 text-sm">Receipt</p>
+                <p className="text-cafe-text/70 text-sm">Official Receipt</p>
               </div>
 
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-cafe-text/70">Order #:</span>
-                <span className="font-medium text-cafe-text">
-                  {completedOrder.orderNumber}
-                </span>
-              </div>
-
-              <div className="flex justify-between text-sm mb-3">
-                <span className="text-cafe-text/70">Date:</span>
-                <span className="text-cafe-text">
-                  {new Date(completedOrder.createdAt).toLocaleString()}
-                </span>
+              <div className="order-info text-sm space-y-1 mb-3">
+                <div className="flex justify-between">
+                  <span className="text-cafe-text/70">Order #:</span>
+                  <span className="font-medium text-cafe-text">
+                    {completedOrder.orderNumber}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-cafe-text/70">Date:</span>
+                  <span className="text-cafe-text">
+                    {new Date(completedOrder.createdAt).toLocaleDateString('en-IN', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric'
+                    })}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-cafe-text/70">Time:</span>
+                  <span className="text-cafe-text">
+                    {new Date(completedOrder.createdAt).toLocaleTimeString('en-IN', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-cafe-text/70">Payment Method:</span>
+                  <span className="text-cafe-text capitalize">
+                    {completedOrder.paymentMethod}
+                  </span>
+                </div>
               </div>
 
               <Separator className="my-2 bg-cafe-primary/10" />
 
               <div className="space-y-2 mb-3">
-                {completedOrder.items.map((item: OrderItem) => (
-                  <div
-                    key={item.menuItemId}
-                    className="flex justify-between text-cafe-text"
-                  >
-                    <span>
-                      {item.quantity} x {item.name}
-                    </span>
-                    <span>₹{item.subtotal.toFixed(2)}</span>
+                <div className="flex justify-between text-sm font-medium">
+                  <span className="w-5/12">Item</span>
+                  <span className="w-2/12 text-center">Qty</span>
+                  <span className="w-2/12 text-right">Price</span>
+                  <span className="w-3/12 text-right">Amount</span>
+                </div>
+                {completedOrder.items.map((item: OrderItem, index: number) => (
+                  <div key={index} className="flex justify-between text-sm">
+                    <span className="w-5/12 truncate">{item.name}</span>
+                    <span className="w-2/12 text-center">{item.quantity}</span>
+                    <span className="w-2/12 text-right">₹{item.price.toFixed(2)}</span>
+                    <span className="w-3/12 text-right">₹{item.subtotal.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
 
               <Separator className="my-2 bg-cafe-primary/10" />
 
-              <div className="space-y-1 text-cafe-text">
-                <div className="flex justify-between text-sm">
+              <div className="total-section space-y-1 text-sm">
+                <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span>₹{completedOrder.subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between">
                   <span>Tax (5%)</span>
                   <span>₹{completedOrder.tax.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between font-medium pt-1">
+                <div className="flex justify-between font-medium text-base pt-1">
                   <span>Total</span>
                   <span>₹{completedOrder.total.toFixed(2)}</span>
                 </div>
               </div>
 
-              <div className="mt-3 text-center">
-                <div className="text-cafe-text mb-1">
-                  Payment Method:{" "}
-                  <span className="capitalize">
-                    {completedOrder.paymentMethod}
-                  </span>
-                </div>
-                <p className="text-cafe-text/70 text-sm">
+              <div className="mt-4 text-center">
+                <p className="text-cafe-text/70 text-xs">
                   Thank you for dining with us!
+                </p>
+                <p className="text-cafe-text/70 text-xs">
+                  Visit us again soon.
                 </p>
               </div>
             </div>
