@@ -1,54 +1,30 @@
 
-// User related types
-export type UserRole = 'student' | 'staff' | 'cafeteria' | 'admin';
+// User Types
+export type UserRole = "student" | "staff" | "cafeteria" | "admin";
 
 export interface User {
   id: string;
-  name: string;
   email: string;
+  name: string;
   role: UserRole;
-  walletBalance?: number;
+  walletBalance: number;
   profileImage?: string;
-  createdAt: Date;
 }
 
-// Auth related types
-export interface AuthState {
-  user: User | null;
-  isAuthenticated: boolean;
-  isLoading: boolean;
-  error: string | null;
-}
-
-// Menu related types
+// Menu Types
 export interface MenuItem {
   id: string;
   name: string;
   description: string;
   price: number;
   category: string;
-  image: string;
+  tags: string[];
   isAvailable: boolean;
-  isVegetarian: boolean;
-  isSpicy?: boolean;
-  containsAllergens?: string[];
-  prepTime: number; // in minutes
-  ingredients?: string[];
-  rating?: number;
-  tags?: string[];
+  image: string;
+  ingredients: string[];
 }
 
-export interface MenuCategory {
-  id: string;
-  name: string;
-  image?: string;
-  description?: string;
-  items: MenuItem[];
-}
-
-// Order related types
-export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
-
+// Order Types
 export interface OrderItem {
   menuItemId: string;
   name: string;
@@ -66,14 +42,15 @@ export interface Order {
   subtotal: number;
   tax: number;
   total: number;
-  status: OrderStatus;
-  paymentMethod: 'cash' | 'card' | 'wallet' | 'upi';
-  paymentStatus: 'pending' | 'completed' | 'failed';
+  status: "pending" | "preparing" | "ready" | "delivered" | "cancelled";
+  paymentMethod: "cash" | "card" | "wallet" | "upi";
+  paymentStatus: "pending" | "completed" | "failed";
   createdAt: Date;
-  estimatedDeliveryTime: Date;
+  estimatedReadyTime?: Date;
+  completedAt?: Date;
 }
 
-// Inventory related types
+// Inventory Types
 export interface InventoryItem {
   id: string;
   name: string;
@@ -84,7 +61,7 @@ export interface InventoryItem {
   lastRestocked: Date;
 }
 
-// Waste management types
+// Waste Management Types
 export interface WasteRecord {
   id: string;
   itemName: string;
@@ -94,74 +71,38 @@ export interface WasteRecord {
   cost: number;
 }
 
-// Analytics types
-export interface SalesData {
+// Analytics Types
+export interface DailySales {
   date: string;
   revenue: number;
   orders: number;
-  averageOrderValue: number;
 }
 
 export interface PopularItem {
-  id: string;
   name: string;
   totalSold: number;
   revenue: number;
 }
 
 export interface Analytics {
-  dailySales: SalesData[];
-  weeklySales: SalesData[];
-  monthlySales: SalesData[];
+  dailySales: DailySales[];
   popularItems: PopularItem[];
   totalRevenue: number;
   totalOrders: number;
   averageOrderValue: number;
 }
 
-// Wallet related types
-export interface WalletTransaction {
-  id: string;
-  userId: string;
-  amount: number;
-  type: 'deposit' | 'withdrawal' | 'payment';
-  description: string;
-  date: Date;
-  orderId?: string;
-}
-
-export interface WalletState {
-  balance: number;
-  transactions: WalletTransaction[];
-  isLoading: boolean;
-  error: string | null;
-}
-
-// Cart related types
-export interface CartItem {
-  menuItem: MenuItem;
-  quantity: number;
-}
-
-export interface CartState {
-  items: CartItem[];
-  subtotal: number;
-  tax: number;
-  total: number;
-}
-
-// AI Assistant related types
-export interface Message {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
-
+// AI Suggestion Types
 export interface AiSuggestion {
   title: string;
   description: string;
-  type: 'inventory' | 'sales' | 'waste' | 'menu';
-  priority: 'low' | 'medium' | 'high';
-  date: Date;
+  priority: "low" | "medium" | "high";
+}
+
+// Chat Message Types
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
 }

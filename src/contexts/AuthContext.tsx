@@ -1,88 +1,102 @@
 
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { User, UserRole } from '@/types';
-import { loginUser, logoutUser } from '@/services/api';
-import { useToast } from '@/hooks/use-toast';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { User, UserRole } from "@/types";
 
-interface AuthContextProps {
+interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
+  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextProps | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isAuthenticated: false,
+  isLoading: true,
+  login: async () => {},
+  logout: () => {},
+});
 
-interface AuthProviderProps {
-  children: ReactNode;
-}
+export const useAuth = () => useContext(AuthContext);
 
-export const AuthProvider = ({ children }: AuthProviderProps) => {
+// Demo users for testing
+const DEMO_USERS: Record<string, User> = {
+  "student@example.com": {
+    id: "s1",
+    email: "student@example.com",
+    name: "Alex Student",
+    role: "student",
+    walletBalance: 500,
+    profileImage: "/assets/avatars/placeholder.jpg",
+  },
+  "staff@example.com": {
+    id: "s2",
+    email: "staff@example.com",
+    name: "Taylor Staff",
+    role: "staff",
+    walletBalance: 1000,
+    profileImage: "/assets/avatars/placeholder.jpg",
+  },
+  "cafeteria@example.com": {
+    id: "c1",
+    email: "cafeteria@example.com",
+    name: "Casey Cafeteria",
+    role: "cafeteria",
+    walletBalance: 0,
+    profileImage: "/assets/avatars/placeholder.jpg",
+  },
+  "admin@example.com": {
+    id: "a1",
+    email: "admin@example.com",
+    name: "Admin User",
+    role: "admin",
+    walletBalance: 0,
+    profileImage: "/assets/avatars/placeholder.jpg",
+  },
+};
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Check if user is already logged in
   useEffect(() => {
-    // Check for stored auth on mount
-    const storedUser = localStorage.getItem('smartCafe-user');
+    const storedUser = localStorage.getItem("smartCafeteriaUser");
     if (storedUser) {
       try {
         setUser(JSON.parse(storedUser));
       } catch (e) {
-        localStorage.removeItem('smartCafe-user');
+        console.error("Failed to parse stored user:", e);
+        localStorage.removeItem("smartCafeteriaUser");
       }
     }
+    setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
-    setError(null);
     
-    try {
-      const userData = await loginUser(email, password);
-      setUser(userData);
-      localStorage.setItem('smartCafe-user', JSON.stringify(userData));
-      toast({
-        title: "Login Successful",
-        description: `Welcome back, ${userData.name}!`,
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Login failed';
-      setError(errorMessage);
-      toast({
-        variant: "destructive",
-        title: "Login Failed",
-        description: errorMessage,
-      });
-    } finally {
-      setIsLoading(false);
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    const lowerEmail = email.toLowerCase();
+    if (DEMO_USERS[lowerEmail] && password === "password") {
+      const loggedInUser = DEMO_USERS[lowerEmail];
+      setUser(loggedInUser);
+      localStorage.setItem("smartCafeteriaUser", JSON.stringify(loggedInUser));
+    } else {
+      throw new Error("Invalid email or password");
     }
+    
+    setIsLoading(false);
   };
 
-  const logout = async () => {
-    setIsLoading(true);
-    
-    try {
-      await logoutUser();
-      setUser(null);
-      localStorage.removeItem('smartCafe-user');
-      toast({
-        title: "Logged Out",
-        description: "You have been successfully logged out.",
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Logout failed';
-      toast({
-        variant: "destructive",
-        title: "Logout Error",
-        description: errorMessage,
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem("smartCafeteriaUser");
   };
 
   return (
@@ -91,20 +105,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         user,
         isAuthenticated: !!user,
         isLoading,
-        error,
         login,
-        logout
+        logout,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
 };

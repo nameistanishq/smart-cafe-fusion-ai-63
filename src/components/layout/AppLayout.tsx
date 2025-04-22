@@ -1,135 +1,287 @@
 
 import React, { useState, useEffect } from "react";
-import { Outlet, useNavigate, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { NavigationMenu, NavigationMenuItem, NavigationMenuLink, NavigationMenuList } from "@/components/ui/navigation-menu";
-import { cn } from "@/lib/utils";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
-import { Home, ShoppingCart, Wallet, List, LogOut, User } from "lucide-react";
 import PreLoader from "@/components/PreLoader";
+import { 
+  Home, ShoppingCart, List, Wallet, User, LogOut, ChefHat, Database, 
+  BarChart, Package, UserCircle, Menu as MenuIcon 
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { useCart } from "@/contexts/CartContext";
 
 const AppLayout: React.FC = () => {
-  const { user, isAuthenticated, logout } = useAuth();
-  const navigate = useNavigate();
+  const { user, logout, isAuthenticated } = useAuth();
+  const { count } = useCart();
+  const { toast } = useToast();
   const location = useLocation();
+  const navigate = useNavigate();
   const [showPreloader, setShowPreloader] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  // Preloader effect
   useEffect(() => {
-    // Only show preloader on first load
-    const hasSeenPreloader = sessionStorage.getItem("hasSeenPreloader");
-    
-    if (hasSeenPreloader) {
+    const timer = setTimeout(() => {
       setShowPreloader(false);
-    } else {
-      const timer = setTimeout(() => {
-        setShowPreloader(false);
-        sessionStorage.setItem("hasSeenPreloader", "true");
-      }, 3000);
-      
-      return () => clearTimeout(timer);
-    }
+    }, 3000);
+
+    return () => clearTimeout(timer);
   }, []);
 
-  // Don't show the navigation for admin and cafeteria pages
-  const shouldShowNav = 
-    !location.pathname.includes("/admin") && 
-    !location.pathname.includes("/cafeteria") &&
-    !location.pathname.includes("/login");
-
-  const handleLogout = async () => {
-    await logout();
-    navigate("/");
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
+    navigate("/login");
   };
 
-  const navItems = [
-    { 
-      label: "Menu", 
-      icon: <Home className="h-5 w-5" />, 
-      path: "/menu" 
-    },
-    { 
-      label: "Orders", 
-      icon: <List className="h-5 w-5" />, 
-      path: "/orders" 
-    },
-    { 
-      label: "Cart", 
-      icon: <ShoppingCart className="h-5 w-5" />, 
-      path: "/checkout" 
-    },
-    { 
-      label: "Wallet", 
-      icon: <Wallet className="h-5 w-5" />, 
-      path: "/wallet" 
-    },
-  ];
+  // Skip preloader in development mode
+  // useEffect(() => {
+  //   if (process.env.NODE_ENV === "development") {
+  //     setShowPreloader(false);
+  //   }
+  // }, []);
+
+  // Get appropriate navigation based on user role
+  const getNavItems = () => {
+    if (!user) {
+      // Public navigation for guest users
+      return [
+        { icon: <Home size={20} />, label: "Menu", path: "/menu" },
+        { icon: <ShoppingCart size={20} />, label: "Cart", path: "/checkout", badge: count > 0 ? count : undefined },
+        { icon: <User size={20} />, label: "Login", path: "/login" },
+      ];
+    }
+
+    if (user.role === "student" || user.role === "staff") {
+      // Student/Staff navigation
+      return [
+        { icon: <Home size={20} />, label: "Menu", path: "/menu" },
+        { icon: <ShoppingCart size={20} />, label: "Cart", path: "/checkout", badge: count > 0 ? count : undefined },
+        { icon: <List size={20} />, label: "Orders", path: "/orders" },
+        { icon: <Wallet size={20} />, label: "Wallet", path: "/wallet" },
+        { icon: <UserCircle size={20} />, label: "Profile", path: "/profile" },
+      ];
+    }
+
+    if (user.role === "cafeteria") {
+      // Cafeteria staff navigation
+      return [
+        { icon: <ShoppingCart size={20} />, label: "Billing", path: "/cafeteria/billing" },
+        { icon: <List size={20} />, label: "Orders", path: "/cafeteria/orders" },
+        { icon: <MenuIcon size={20} />, label: "Menu", path: "/cafeteria/menu" },
+      ];
+    }
+
+    if (user.role === "admin") {
+      // Admin navigation
+      return [
+        { icon: <BarChart size={20} />, label: "Dashboard", path: "/admin/dashboard" },
+        { icon: <Package size={20} />, label: "Inventory", path: "/admin/inventory" },
+        { icon: <Database size={20} />, label: "Waste", path: "/admin/waste" },
+      ];
+    }
+
+    return [];
+  };
+
+  const navItems = getNavItems();
+
+  // Determine if the current user role should see the main navigation
+  const shouldShowBottomNav = () => {
+    if (!user) return true; // Guest users see navigation
+    return user.role === "student" || user.role === "staff";
+  };
+
+  if (showPreloader) {
+    return <PreLoader />;
+  }
+
+  const isActive = (path: string) => {
+    return location.pathname === path;
+  };
 
   return (
-    <>
-      {showPreloader && <PreLoader />}
-      
-      <div className="relative min-h-screen bg-cafe-dark">
-        <main className="pb-16">
-          <Outlet />
-        </main>
-        
-        {shouldShowNav && (
-          <div className="fixed bottom-0 left-0 right-0 border-t border-cafe-primary/20 bg-cafe-darker z-10">
-            <NavigationMenu className="max-w-full mx-auto">
-              <NavigationMenuList className="flex w-full">
-                {navItems.map((item) => (
-                  <NavigationMenuItem key={item.path} className="flex-1">
-                    <NavigationMenuLink asChild>
-                      <Button 
-                        variant="ghost" 
-                        className={cn(
-                          "w-full h-16 flex flex-col items-center justify-center space-y-1 rounded-none",
-                          location.pathname === item.path 
-                            ? "text-cafe-primary bg-cafe-primary/10" 
-                            : "text-cafe-text/70 hover:text-cafe-text hover:bg-cafe-dark/50"
-                        )}
-                        onClick={() => navigate(item.path)}
-                      >
-                        {item.icon}
-                        <span className="text-xs">{item.label}</span>
-                      </Button>
-                    </NavigationMenuLink>
-                  </NavigationMenuItem>
-                ))}
-                
-                {isAuthenticated ? (
-                  <NavigationMenuItem className="flex-1">
-                    <NavigationMenuLink asChild>
-                      <Button 
-                        variant="ghost" 
-                        className="w-full h-16 flex flex-col items-center justify-center space-y-1 rounded-none text-cafe-text/70 hover:text-cafe-text hover:bg-cafe-dark/50"
-                        onClick={handleLogout}
-                      >
-                        <LogOut className="h-5 w-5" />
-                        <span className="text-xs">Logout</span>
-                      </Button>
-                    </NavigationMenuLink>
-                  </NavigationMenuItem>
-                ) : (
-                  <NavigationMenuItem className="flex-1">
-                    <NavigationMenuLink asChild>
-                      <Button 
-                        variant="ghost" 
-                        className="w-full h-16 flex flex-col items-center justify-center space-y-1 rounded-none text-cafe-text/70 hover:text-cafe-text hover:bg-cafe-dark/50"
-                        onClick={() => navigate("/login")}
-                      >
-                        <User className="h-5 w-5" />
-                        <span className="text-xs">Login</span>
-                      </Button>
-                    </NavigationMenuLink>
-                  </NavigationMenuItem>
-                )}
-              </NavigationMenuList>
-            </NavigationMenu>
+    <div className="flex min-h-screen flex-col bg-cafe-dark text-cafe-text">
+      {/* Header for all users */}
+      <header className="sticky top-0 z-10 border-b border-cafe-primary/20 bg-cafe-surface shadow-md">
+        <div className="container mx-auto flex h-16 items-center justify-between px-4">
+          <div className="flex items-center">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="text-xl font-bold"
+            >
+              {user?.role === "admin" ? (
+                <span className="text-cafe-primary">Admin Dashboard</span>
+              ) : user?.role === "cafeteria" ? (
+                <span className="text-cafe-primary">Cafeteria Staff</span>
+              ) : (
+                <>
+                  <span className="text-cafe-primary">Smart</span> Cafeteria
+                </>
+              )}
+            </motion.div>
           </div>
+
+          <div className="flex items-center space-x-2">
+            {isAuthenticated ? (
+              <>
+                <div className="hidden md:block mr-4 text-sm">
+                  <span className="text-cafe-text/70">Hello, </span>
+                  <span className="font-medium">{user?.name}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleLogout}
+                  className="text-cafe-primary hover:bg-cafe-primary/10"
+                >
+                  <LogOut size={20} />
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/login")}
+                className="hidden md:flex text-cafe-primary hover:bg-cafe-primary/10"
+              >
+                <User size={18} className="mr-2" />
+                Login
+              </Button>
+            )}
+
+            {/* Mobile menu button - only for staff roles that don't use bottom nav */}
+            {!shouldShowBottomNav() && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="md:hidden text-cafe-primary hover:bg-cafe-primary/10"
+              >
+                <MenuIcon size={20} />
+              </Button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile menu drawer for staff roles */}
+      <AnimatePresence>
+        {isMobileMenuOpen && !shouldShowBottomNav() && (
+          <motion.div
+            initial={{ x: "100%" }}
+            animate={{ x: 0 }}
+            exit={{ x: "100%" }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className="fixed inset-y-0 right-0 z-50 w-64 bg-cafe-surface border-l border-cafe-primary/20 shadow-lg md:hidden"
+          >
+            <div className="flex flex-col h-full pt-16">
+              <div className="flex justify-end p-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="text-cafe-primary hover:bg-cafe-primary/10"
+                >
+                  <LogOut size={20} />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto py-4">
+                <nav className="space-y-2 px-4">
+                  {navItems.map((item) => (
+                    <Button
+                      key={item.path}
+                      variant={isActive(item.path) ? "default" : "ghost"}
+                      className={`w-full justify-start ${
+                        isActive(item.path)
+                          ? "bg-cafe-primary text-white"
+                          : "text-cafe-text hover:bg-cafe-primary/10"
+                      }`}
+                      onClick={() => {
+                        navigate(item.path);
+                        setIsMobileMenuOpen(false);
+                      }}
+                    >
+                      {item.icon}
+                      <span className="ml-2">{item.label}</span>
+                    </Button>
+                  ))}
+                </nav>
+              </div>
+              <div className="p-4 border-t border-cafe-primary/20">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start border-cafe-primary/20 text-cafe-primary hover:bg-cafe-primary/10"
+                  onClick={handleLogout}
+                >
+                  <LogOut size={18} className="mr-2" />
+                  Logout
+                </Button>
+              </div>
+            </div>
+          </motion.div>
         )}
-      </div>
-    </>
+      </AnimatePresence>
+
+      {/* Main content */}
+      <main className="flex-1">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.2 }}
+            className="container mx-auto py-4 px-4 md:py-6 md:px-6"
+          >
+            <Outlet />
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {/* Footer navigation - only for students/staff/guest */}
+      {shouldShowBottomNav() && (
+        <motion.nav
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
+          className="fixed bottom-0 left-0 right-0 bg-cafe-surface border-t border-cafe-primary/20 shadow-lg md:hidden z-10"
+        >
+          <div className="flex justify-around">
+            {navItems.map((item) => (
+              <Button
+                key={item.path}
+                variant="ghost"
+                size="icon"
+                className={`flex h-16 w-16 flex-col items-center justify-center rounded-none border-t-2 text-xs ${
+                  isActive(item.path)
+                    ? "border-cafe-primary text-cafe-primary"
+                    : "border-transparent text-cafe-text/70"
+                }`}
+                onClick={() => navigate(item.path)}
+              >
+                <div className="relative">
+                  {item.icon}
+                  {item.badge && (
+                    <span className="absolute -right-2 -top-2 flex h-4 w-4 items-center justify-center rounded-full bg-cafe-primary text-xs text-white">
+                      {item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className="mt-1">{item.label}</span>
+              </Button>
+            ))}
+          </div>
+        </motion.nav>
+      )}
+    </div>
   );
 };
 

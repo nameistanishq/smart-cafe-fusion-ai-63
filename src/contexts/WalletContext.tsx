@@ -1,117 +1,178 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { WalletTransaction } from '@/types';
-import { getWalletBalance, getWalletTransactions, addWalletTransaction } from '@/services/api';
-import { useAuth } from './AuthContext';
-import { useToast } from '@/hooks/use-toast';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from "./AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
-interface WalletContextProps {
+interface Transaction {
+  id: string;
+  userId: string;
+  amount: number;
+  type: "credit" | "debit";
+  description: string;
+  createdAt: Date;
+}
+
+interface WalletContextType {
   balance: number;
-  transactions: WalletTransaction[];
+  transactions: Transaction[];
   isLoading: boolean;
-  error: string | null;
-  refreshWallet: () => Promise<void>;
-  addTransaction: (type: 'deposit' | 'withdrawal' | 'payment', amount: number, description: string, orderId?: string) => Promise<void>;
+  addFunds: (amount: number) => Promise<void>;
+  makePayment: (amount: number, description: string) => Promise<boolean>;
 }
 
-const WalletContext = createContext<WalletContextProps | undefined>(undefined);
+const WalletContext = createContext<WalletContextType>({
+  balance: 0,
+  transactions: [],
+  isLoading: true,
+  addFunds: async () => {},
+  makePayment: async () => false,
+});
 
-interface WalletProviderProps {
-  children: ReactNode;
-}
+export const useWallet = () => useContext(WalletContext);
 
-export const WalletProvider = ({ children }: WalletProviderProps) => {
-  const { user, isAuthenticated } = useAuth();
-  const [balance, setBalance] = useState<number>(0);
-  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [balance, setBalance] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const fetchWalletData = async () => {
-    if (!isAuthenticated || !user) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
+  // Load wallet data when user changes
+  useEffect(() => {
+    if (!user) {
+      setBalance(0);
+      setTransactions([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      const [balanceData, transactionsData] = await Promise.all([
-        getWalletBalance(user.id),
-        getWalletTransactions(user.id)
-      ]);
-      
-      setBalance(balanceData);
-      setTransactions(transactionsData);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load wallet data';
-      setError(errorMessage);
-      toast({
-        variant: "destructive",
-        title: "Wallet Loading Error",
-        description: errorMessage,
-      });
+      // Set initial balance from user
+      setBalance(user.walletBalance || 0);
+
+      // Load transactions from localStorage
+      const storedTransactions = localStorage.getItem(`smartCafeteria_wallet_tx_${user.id}`);
+      if (storedTransactions) {
+        const parsedTransactions = JSON.parse(storedTransactions).map((tx: any) => ({
+          ...tx,
+          createdAt: new Date(tx.createdAt),
+        }));
+        setTransactions(parsedTransactions);
+      } else {
+        // Initialize with an empty array
+        setTransactions([]);
+      }
+    } catch (error) {
+      console.error("Failed to load wallet data:", error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [user]);
 
+  // Save transactions to localStorage when they change
   useEffect(() => {
-    if (isAuthenticated && user) {
-      fetchWalletData();
+    if (user && !isLoading) {
+      localStorage.setItem(`smartCafeteria_wallet_tx_${user.id}`, JSON.stringify(transactions));
     }
-  }, [isAuthenticated, user]);
+  }, [transactions, user, isLoading]);
 
-  const refreshWallet = async () => {
-    await fetchWalletData();
+  const addFunds = async (amount: number): Promise<void> => {
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to add funds to your wallet.",
+        variant: "destructive",
+      });
+      throw new Error("Authentication required");
+    }
+
+    if (amount <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Please enter a valid amount to add.",
+        variant: "destructive",
+      });
+      throw new Error("Invalid amount");
+    }
+
+    // Create a new transaction
+    const newTransaction: Transaction = {
+      id: `tx_${Date.now()}`,
+      userId: user.id,
+      amount,
+      type: "credit",
+      description: "Added funds to wallet",
+      createdAt: new Date(),
+    };
+
+    // Update balance and transactions
+    setBalance((prev) => prev + amount);
+    setTransactions((prev) => [newTransaction, ...prev]);
+
+    // Update user wallet balance in localStorage
+    const updatedUser = { ...user, walletBalance: user.walletBalance + amount };
+    localStorage.setItem("smartCafeteriaUser", JSON.stringify(updatedUser));
+
+    toast({
+      title: "Funds Added",
+      description: `₹${amount} has been added to your wallet.`,
+    });
   };
 
-  const addTransaction = async (
-    type: 'deposit' | 'withdrawal' | 'payment', 
-    amount: number, 
-    description: string,
-    orderId?: string
-  ) => {
-    if (!isAuthenticated || !user) {
+  const makePayment = async (amount: number, description: string): Promise<boolean> => {
+    if (!user) {
       toast({
-        variant: "destructive",
         title: "Authentication Required",
-        description: "You must be logged in to perform wallet transactions.",
-      });
-      return;
-    }
-    
-    try {
-      const transaction = await addWalletTransaction({
-        userId: user.id,
-        amount,
-        type,
-        description,
-        orderId
-      });
-      
-      // Update local state
-      if (type === 'deposit') {
-        setBalance(prev => prev + amount);
-      } else {
-        setBalance(prev => prev - amount);
-      }
-      
-      setTransactions(prev => [transaction, ...prev]);
-      
-      const actionText = type === 'deposit' ? 'added to' : 'deducted from';
-      
-      toast({
-        title: "Transaction Successful",
-        description: `₹${amount} has been ${actionText} your wallet.`,
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Transaction failed';
-      toast({
+        description: "Please log in to make a payment.",
         variant: "destructive",
-        title: "Transaction Failed",
-        description: errorMessage,
       });
+      return false;
     }
+
+    if (amount <= 0) {
+      toast({
+        title: "Invalid Amount",
+        description: "Payment amount must be greater than zero.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (balance < amount) {
+      toast({
+        title: "Insufficient Balance",
+        description: "You don't have enough funds in your wallet.",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    // Create a new transaction
+    const newTransaction: Transaction = {
+      id: `tx_${Date.now()}`,
+      userId: user.id,
+      amount,
+      type: "debit",
+      description,
+      createdAt: new Date(),
+    };
+
+    // Update balance and transactions
+    setBalance((prev) => prev - amount);
+    setTransactions((prev) => [newTransaction, ...prev]);
+
+    // Update user wallet balance in localStorage
+    const updatedUser = { ...user, walletBalance: user.walletBalance - amount };
+    localStorage.setItem("smartCafeteriaUser", JSON.stringify(updatedUser));
+
+    toast({
+      title: "Payment Successful",
+      description: `₹${amount} has been debited from your wallet.`,
+    });
+
+    return true;
   };
 
   return (
@@ -120,20 +181,11 @@ export const WalletProvider = ({ children }: WalletProviderProps) => {
         balance,
         transactions,
         isLoading,
-        error,
-        refreshWallet,
-        addTransaction
+        addFunds,
+        makePayment,
       }}
     >
       {children}
     </WalletContext.Provider>
   );
-};
-
-export const useWallet = () => {
-  const context = useContext(WalletContext);
-  if (context === undefined) {
-    throw new Error('useWallet must be used within a WalletProvider');
-  }
-  return context;
 };

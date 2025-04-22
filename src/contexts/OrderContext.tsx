@@ -1,120 +1,126 @@
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { Order, OrderStatus } from '@/types';
-import { getOrders, createOrder, updateOrderStatus, getOrderById } from '@/services/api';
-import { useToast } from '@/hooks/use-toast';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { Order, OrderItem } from "@/types";
+import { useAuth } from "./AuthContext";
 
-interface OrderContextProps {
+interface OrderContextType {
   orders: Order[];
   isLoading: boolean;
-  error: string | null;
-  refreshOrders: () => Promise<void>;
-  createNewOrder: (order: Omit<Order, "id" | "orderNumber" | "createdAt" | "estimatedDeliveryTime">) => Promise<Order>;
-  updateStatus: (id: string, status: OrderStatus) => Promise<void>;
-  getOrder: (id: string) => Promise<Order>;
+  createNewOrder: (orderData: Omit<Order, "id" | "orderNumber" | "createdAt">) => Promise<Order>;
+  updateOrderStatus: (orderId: string, status: Order["status"]) => Promise<Order>;
+  cancelOrder: (orderId: string) => Promise<void>;
+  getOrderById: (orderId: string) => Order | undefined;
+  getUserOrders: () => Order[];
 }
 
-const OrderContext = createContext<OrderContextProps | undefined>(undefined);
+const OrderContext = createContext<OrderContextType>({
+  orders: [],
+  isLoading: true,
+  createNewOrder: async () => ({} as Order),
+  updateOrderStatus: async () => ({} as Order),
+  cancelOrder: async () => {},
+  getOrderById: () => undefined,
+  getUserOrders: () => [],
+});
 
-interface OrderProviderProps {
-  children: ReactNode;
-}
+export const useOrder = () => useContext(OrderContext);
 
-export const OrderProvider = ({ children }: OrderProviderProps) => {
+// Generate a 6-digit random order number
+const generateOrderNumber = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
+  const { user } = useAuth();
 
-  const fetchOrders = async () => {
-    setIsLoading(true);
-    setError(null);
-    
+  // Load orders from localStorage
+  useEffect(() => {
     try {
-      const ordersData = await getOrders();
-      setOrders(ordersData);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load orders';
-      setError(errorMessage);
-      toast({
-        variant: "destructive",
-        title: "Orders Loading Error",
-        description: errorMessage,
-      });
+      const storedOrders = localStorage.getItem("smartCafeteriaOrders");
+      if (storedOrders) {
+        const parsedOrders = JSON.parse(storedOrders).map((order: any) => ({
+          ...order,
+          createdAt: new Date(order.createdAt),
+          estimatedReadyTime: order.estimatedReadyTime ? new Date(order.estimatedReadyTime) : undefined,
+          completedAt: order.completedAt ? new Date(order.completedAt) : undefined,
+        }));
+        setOrders(parsedOrders);
+      }
+    } catch (error) {
+      console.error("Failed to load orders:", error);
     } finally {
       setIsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    fetchOrders();
   }, []);
 
-  const refreshOrders = async () => {
-    await fetchOrders();
+  // Save orders to localStorage when they change
+  useEffect(() => {
+    if (!isLoading) {
+      localStorage.setItem("smartCafeteriaOrders", JSON.stringify(orders));
+    }
+  }, [orders, isLoading]);
+
+  const createNewOrder = async (
+    orderData: Omit<Order, "id" | "orderNumber" | "createdAt">
+  ): Promise<Order> => {
+    const newOrder: Order = {
+      ...orderData,
+      id: `order_${Date.now()}`,
+      orderNumber: generateOrderNumber(),
+      createdAt: new Date(),
+      estimatedReadyTime: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes from now
+    };
+
+    setOrders((prevOrders) => [...prevOrders, newOrder]);
+    return newOrder;
   };
 
-  const createNewOrder = async (orderData: Omit<Order, "id" | "orderNumber" | "createdAt" | "estimatedDeliveryTime">) => {
-    try {
-      const newOrder = await createOrder(orderData);
-      
-      // Update local state
-      setOrders(prevOrders => [newOrder, ...prevOrders]);
-      
-      toast({
-        title: "Order Created",
-        description: `Order #${newOrder.orderNumber} has been created successfully.`,
-      });
-      
-      return newOrder;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create order';
-      toast({
-        variant: "destructive",
-        title: "Order Creation Failed",
-        description: errorMessage,
-      });
-      throw err;
+  const updateOrderStatus = async (
+    orderId: string,
+    status: Order["status"]
+  ): Promise<Order> => {
+    let updatedOrder: Order | undefined;
+
+    setOrders((prevOrders) =>
+      prevOrders.map((order) => {
+        if (order.id === orderId) {
+          const updates: Partial<Order> = { status };
+          
+          if (status === "delivered" || status === "cancelled") {
+            updates.completedAt = new Date();
+          }
+          
+          updatedOrder = { ...order, ...updates };
+          return updatedOrder;
+        }
+        return order;
+      })
+    );
+
+    if (!updatedOrder) {
+      throw new Error(`Order with id ${orderId} not found`);
     }
+
+    return updatedOrder;
   };
 
-  const updateStatus = async (id: string, status: OrderStatus) => {
-    try {
-      const updatedOrder = await updateOrderStatus(id, status);
-      
-      // Update local state
-      setOrders(prevOrders => 
-        prevOrders.map(order => 
-          order.id === id ? { ...order, status } : order
-        )
-      );
-      
-      toast({
-        title: "Order Updated",
-        description: `Order #${updatedOrder.orderNumber} status changed to ${status}.`,
-      });
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to update order status';
-      toast({
-        variant: "destructive",
-        title: "Update Failed",
-        description: errorMessage,
-      });
-    }
+  const cancelOrder = async (orderId: string): Promise<void> => {
+    await updateOrderStatus(orderId, "cancelled");
   };
 
-  const getOrder = async (id: string) => {
-    try {
-      return await getOrderById(id);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch order';
-      toast({
-        variant: "destructive",
-        title: "Order Fetch Failed",
-        description: errorMessage,
-      });
-      throw err;
-    }
+  const getOrderById = (orderId: string): Order | undefined => {
+    return orders.find((order) => order.id === orderId);
+  };
+
+  const getUserOrders = (): Order[] => {
+    if (!user) return [];
+    return orders
+      .filter((order) => order.userId === user.id)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   };
 
   return (
@@ -122,22 +128,14 @@ export const OrderProvider = ({ children }: OrderProviderProps) => {
       value={{
         orders,
         isLoading,
-        error,
-        refreshOrders,
         createNewOrder,
-        updateStatus,
-        getOrder
+        updateOrderStatus,
+        cancelOrder,
+        getOrderById,
+        getUserOrders,
       }}
     >
       {children}
     </OrderContext.Provider>
   );
-};
-
-export const useOrder = () => {
-  const context = useContext(OrderContext);
-  if (context === undefined) {
-    throw new Error('useOrder must be used within an OrderProvider');
-  }
-  return context;
 };

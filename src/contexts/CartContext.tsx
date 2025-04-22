@@ -1,168 +1,154 @@
 
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { CartState, MenuItem, CartItem } from '@/types';
-import { useToast } from '@/hooks/use-toast';
+import React, { createContext, useContext, useState, useEffect } from "react";
+import { MenuItem } from "@/types";
+import { useMenu } from "./MenuContext";
+import { useAuth } from "./AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
-// Define actions
-type CartAction =
-  | { type: 'ADD_ITEM'; payload: { menuItem: MenuItem; quantity: number } }
-  | { type: 'REMOVE_ITEM'; payload: { menuItemId: string } }
-  | { type: 'UPDATE_QUANTITY'; payload: { menuItemId: string; quantity: number } }
-  | { type: 'CLEAR_CART' };
+interface CartItem {
+  menuItem: MenuItem;
+  quantity: number;
+}
 
-// Initial state
-const initialState: CartState = {
-  items: [],
-  subtotal: 0,
-  tax: 0,
-  total: 0
-};
-
-// Reducer function
-const calculateTotals = (items: CartItem[]) => {
-  const subtotal = items.reduce((sum, item) => sum + (item.menuItem.price * item.quantity), 0);
-  const tax = subtotal * 0.05; // 5% tax rate
-  const total = subtotal + tax;
-  
-  return { subtotal, tax, total };
-};
-
-const cartReducer = (state: CartState, action: CartAction): CartState => {
-  switch (action.type) {
-    case 'ADD_ITEM': {
-      const { menuItem, quantity } = action.payload;
-      
-      // Check if item already exists in cart
-      const existingItemIndex = state.items.findIndex(item => item.menuItem.id === menuItem.id);
-      
-      let newItems;
-      
-      if (existingItemIndex >= 0) {
-        // Update quantity if item exists
-        newItems = [...state.items];
-        newItems[existingItemIndex] = {
-          ...newItems[existingItemIndex],
-          quantity: newItems[existingItemIndex].quantity + quantity
-        };
-      } else {
-        // Add new item
-        newItems = [...state.items, { menuItem, quantity }];
-      }
-      
-      return {
-        ...state,
-        items: newItems,
-        ...calculateTotals(newItems)
-      };
-    }
-    
-    case 'REMOVE_ITEM': {
-      const newItems = state.items.filter(item => item.menuItem.id !== action.payload.menuItemId);
-      
-      return {
-        ...state,
-        items: newItems,
-        ...calculateTotals(newItems)
-      };
-    }
-    
-    case 'UPDATE_QUANTITY': {
-      const { menuItemId, quantity } = action.payload;
-      
-      // If quantity is 0 or less, remove the item
-      if (quantity <= 0) {
-        return cartReducer(state, { type: 'REMOVE_ITEM', payload: { menuItemId } });
-      }
-      
-      const newItems = state.items.map(item => 
-        item.menuItem.id === menuItemId 
-          ? { ...item, quantity } 
-          : item
-      );
-      
-      return {
-        ...state,
-        items: newItems,
-        ...calculateTotals(newItems)
-      };
-    }
-    
-    case 'CLEAR_CART':
-      return initialState;
-      
-    default:
-      return state;
-  }
-};
-
-// Create context
-interface CartContextProps {
-  cart: CartState;
+interface CartContextType {
+  items: CartItem[];
   addItem: (menuItem: MenuItem, quantity: number) => void;
   removeItem: (menuItemId: string) => void;
   updateQuantity: (menuItemId: string, quantity: number) => void;
   clearCart: () => void;
+  total: number;
+  count: number;
 }
 
-const CartContext = createContext<CartContextProps | undefined>(undefined);
+const CartContext = createContext<CartContextType>({
+  items: [],
+  addItem: () => {},
+  removeItem: () => {},
+  updateQuantity: () => {},
+  clearCart: () => {},
+  total: 0,
+  count: 0,
+});
 
-// Provider component
-interface CartProviderProps {
-  children: ReactNode;
-}
+export const useCart = () => useContext(CartContext);
 
-export const CartProvider = ({ children }: CartProviderProps) => {
-  const [cart, dispatch] = useReducer(cartReducer, initialState);
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const [items, setItems] = useState<CartItem[]>([]);
   const { toast } = useToast();
+  const { user } = useAuth();
+  const { menuItems } = useMenu();
+
+  // Load cart from localStorage when component mounts
+  useEffect(() => {
+    const userId = user?.id || "guest";
+    const savedCart = localStorage.getItem(`smartCafeteria_cart_${userId}`);
+
+    if (savedCart) {
+      try {
+        const parsedCart: CartItem[] = JSON.parse(savedCart);
+        
+        // Ensure we have the latest menu item data
+        const validatedCart = parsedCart.filter(cartItem => {
+          const menuItem = menuItems.find(item => item.id === cartItem.menuItem.id);
+          return menuItem && menuItem.isAvailable;
+        }).map(cartItem => {
+          const menuItem = menuItems.find(item => item.id === cartItem.menuItem.id);
+          return {
+            ...cartItem,
+            menuItem: menuItem || cartItem.menuItem
+          };
+        });
+        
+        setItems(validatedCart);
+      } catch (e) {
+        console.error("Failed to parse cart:", e);
+      }
+    }
+  }, [user, menuItems]);
+
+  // Save cart to localStorage whenever it changes
+  useEffect(() => {
+    const userId = user?.id || "guest";
+    localStorage.setItem(`smartCafeteria_cart_${userId}`, JSON.stringify(items));
+  }, [items, user]);
 
   const addItem = (menuItem: MenuItem, quantity: number) => {
-    dispatch({ type: 'ADD_ITEM', payload: { menuItem, quantity } });
+    if (!menuItem.isAvailable) {
+      toast({
+        title: "Item Unavailable",
+        description: `${menuItem.name} is currently unavailable.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setItems((prevItems) => {
+      const existingItem = prevItems.find(
+        (item) => item.menuItem.id === menuItem.id
+      );
+
+      if (existingItem) {
+        return prevItems.map((item) =>
+          item.menuItem.id === menuItem.id
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        );
+      } else {
+        return [...prevItems, { menuItem, quantity }];
+      }
+    });
+
     toast({
-      title: "Added to cart",
-      description: `${quantity} x ${menuItem.name} added to your cart`,
+      title: "Added to Cart",
+      description: `${quantity} ${menuItem.name} added to your cart.`,
     });
   };
 
   const removeItem = (menuItemId: string) => {
-    dispatch({ type: 'REMOVE_ITEM', payload: { menuItemId } });
-    toast({
-      title: "Removed from cart",
-      description: "Item removed from your cart",
-    });
+    setItems((prevItems) =>
+      prevItems.filter((item) => item.menuItem.id !== menuItemId)
+    );
   };
 
   const updateQuantity = (menuItemId: string, quantity: number) => {
-    dispatch({ type: 'UPDATE_QUANTITY', payload: { menuItemId, quantity } });
+    if (quantity <= 0) {
+      removeItem(menuItemId);
+      return;
+    }
+
+    setItems((prevItems) =>
+      prevItems.map((item) =>
+        item.menuItem.id === menuItemId ? { ...item, quantity } : item
+      )
+    );
   };
 
   const clearCart = () => {
-    dispatch({ type: 'CLEAR_CART' });
-    toast({
-      title: "Cart cleared",
-      description: "Your cart has been cleared",
-    });
+    setItems([]);
   };
+
+  const total = items.reduce(
+    (sum, item) => sum + item.menuItem.price * item.quantity,
+    0
+  );
+
+  const count = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <CartContext.Provider
       value={{
-        cart,
+        items,
         addItem,
         removeItem,
         updateQuantity,
-        clearCart
+        clearCart,
+        total,
+        count,
       }}
     >
       {children}
     </CartContext.Provider>
   );
-};
-
-// Custom hook
-export const useCart = () => {
-  const context = useContext(CartContext);
-  if (context === undefined) {
-    throw new Error('useCart must be used within a CartProvider');
-  }
-  return context;
 };
