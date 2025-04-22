@@ -1,41 +1,47 @@
 
 import { MenuCategory } from "@/types";
-import { menuItems } from "./menuItems";
 
 export const menuCategories: MenuCategory[] = [
   {
-    id: "cat-1",
+    id: "breakfast",
     name: "Breakfast",
-    image: "/assets/categories/breakfast.jpg",
-    description: "Start your day with our freshly made South Indian breakfast items",
-    items: menuItems.filter(item => item.category === "cat-1")
+    description: "Traditional South Indian breakfast items",
+    image: "/assets/menu/categories/breakfast.jpg"
   },
   {
-    id: "cat-2",
+    id: "main-course",
     name: "Main Course",
-    image: "/assets/categories/main-course.jpg",
-    description: "Authentic South Indian rice-based dishes for a fulfilling meal",
-    items: menuItems.filter(item => item.category === "cat-2")
+    description: "Hearty main dishes for lunch and dinner",
+    image: "/assets/menu/categories/main-course.jpg"
   },
   {
-    id: "cat-3",
+    id: "dosa",
+    name: "Dosa Varieties",
+    description: "Wide range of dosa varieties",
+    image: "/assets/menu/categories/dosa.jpg"
+  },
+  {
+    id: "rice",
+    name: "Rice Varieties",
+    description: "Flavored rice dishes",
+    image: "/assets/menu/categories/rice.jpg"
+  },
+  {
+    id: "snacks",
     name: "Snacks",
-    image: "/assets/categories/snacks.jpg",
-    description: "Tasty South Indian snacks perfect for a quick bite",
-    items: menuItems.filter(item => item.category === "cat-3")
+    description: "Light bites and evening snacks",
+    image: "/assets/menu/categories/snacks.jpg"
   },
   {
-    id: "cat-4",
-    name: "Desserts",
-    image: "/assets/categories/desserts.jpg",
-    description: "Sweet treats to satisfy your cravings",
-    items: menuItems.filter(item => item.category === "cat-4")
-  },
-  {
-    id: "cat-5",
+    id: "beverages",
     name: "Beverages",
-    image: "/assets/categories/beverages.jpg",
-    description: "Refreshing drinks to complement your meal",
-    items: menuItems.filter(item => item.category === "cat-5")
+    description: "South Indian coffee, tea and more",
+    image: "/assets/menu/categories/beverages.jpg"
+  },
+  {
+    id: "desserts",
+    name: "Desserts",
+    description: "Sweet treats to end your meal",
+    image: "/assets/menu/categories/desserts.jpg"
   }
 ];

@@ -1,126 +1,96 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { MenuItem } from "@/types";
-import { useMenu } from "./MenuContext";
-import { useAuth } from "./AuthContext";
-import { useToast } from "@/hooks/use-toast";
-
-interface CartItem {
-  menuItem: MenuItem;
-  quantity: number;
-}
-
-interface CartContextType {
-  items: CartItem[];
-  addItem: (menuItem: MenuItem, quantity: number) => void;
-  removeItem: (menuItemId: string) => void;
-  updateQuantity: (menuItemId: string, quantity: number) => void;
-  clearCart: () => void;
-  total: number;
-  count: number;
-}
+import { MenuItem, CartContextType } from "@/types";
 
 const CartContext = createContext<CartContextType>({
   items: [],
+  cart: { items: [], subtotal: 0, tax: 0, total: 0 },
   addItem: () => {},
   removeItem: () => {},
   updateQuantity: () => {},
   clearCart: () => {},
-  total: 0,
-  count: 0,
 });
 
 export const useCart = () => useContext(CartContext);
 
-export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
-  const [items, setItems] = useState<CartItem[]>([]);
-  const { toast } = useToast();
-  const { user } = useAuth();
-  const { menuItems } = useMenu();
+export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [items, setItems] = useState<{ menuItem: MenuItem; quantity: number }[]>([]);
+  const [cart, setCart] = useState<{
+    items: { menuItem: MenuItem; quantity: number }[];
+    subtotal: number;
+    tax: number;
+    total: number;
+  }>({
+    items: [],
+    subtotal: 0,
+    tax: 0,
+    total: 0,
+  });
 
-  // Load cart from localStorage when component mounts
+  // Calculate cart totals whenever items change
   useEffect(() => {
-    const userId = user?.id || "guest";
-    const savedCart = localStorage.getItem(`smartCafeteria_cart_${userId}`);
+    const subtotal = items.reduce(
+      (sum, item) => sum + item.menuItem.price * item.quantity,
+      0
+    );
+    const tax = subtotal * 0.05; // 5% tax
+    const total = subtotal + tax;
 
+    setCart({
+      items,
+      subtotal,
+      tax,
+      total,
+    });
+  }, [items]);
+
+  // Load cart from localStorage on initial render
+  useEffect(() => {
+    const savedCart = localStorage.getItem("smartCafeteriaCart");
     if (savedCart) {
       try {
-        const parsedCart: CartItem[] = JSON.parse(savedCart);
-        
-        // Ensure we have the latest menu item data
-        const validatedCart = parsedCart.filter(cartItem => {
-          const menuItem = menuItems.find(item => item.id === cartItem.menuItem.id);
-          return menuItem && menuItem.isAvailable;
-        }).map(cartItem => {
-          const menuItem = menuItems.find(item => item.id === cartItem.menuItem.id);
-          return {
-            ...cartItem,
-            menuItem: menuItem || cartItem.menuItem
-          };
-        });
-        
-        setItems(validatedCart);
+        setItems(JSON.parse(savedCart));
       } catch (e) {
-        console.error("Failed to parse cart:", e);
+        console.error("Failed to parse saved cart:", e);
+        localStorage.removeItem("smartCafeteriaCart");
       }
     }
-  }, [user, menuItems]);
+  }, []);
 
   // Save cart to localStorage whenever it changes
   useEffect(() => {
-    const userId = user?.id || "guest";
-    localStorage.setItem(`smartCafeteria_cart_${userId}`, JSON.stringify(items));
-  }, [items, user]);
+    localStorage.setItem("smartCafeteriaCart", JSON.stringify(items));
+  }, [items]);
 
   const addItem = (menuItem: MenuItem, quantity: number) => {
-    if (!menuItem.isAvailable) {
-      toast({
-        title: "Item Unavailable",
-        description: `${menuItem.name} is currently unavailable.`,
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setItems((prevItems) => {
-      const existingItem = prevItems.find(
-        (item) => item.menuItem.id === menuItem.id
-      );
-
-      if (existingItem) {
-        return prevItems.map((item) =>
-          item.menuItem.id === menuItem.id
-            ? { ...item, quantity: item.quantity + quantity }
-            : item
-        );
-      } else {
-        return [...prevItems, { menuItem, quantity }];
-      }
-    });
-
-    toast({
-      title: "Added to Cart",
-      description: `${quantity} ${menuItem.name} added to your cart.`,
-    });
-  };
-
-  const removeItem = (menuItemId: string) => {
-    setItems((prevItems) =>
-      prevItems.filter((item) => item.menuItem.id !== menuItemId)
+    const existingItemIndex = items.findIndex(
+      (item) => item.menuItem.id === menuItem.id
     );
+
+    if (existingItemIndex >= 0) {
+      // Item already exists, update quantity
+      const updatedItems = [...items];
+      updatedItems[existingItemIndex].quantity += quantity;
+      setItems(updatedItems);
+    } else {
+      // Item doesn't exist, add new item
+      setItems([...items, { menuItem, quantity }]);
+    }
   };
 
-  const updateQuantity = (menuItemId: string, quantity: number) => {
+  const removeItem = (itemId: string) => {
+    setItems(items.filter((item) => item.menuItem.id !== itemId));
+  };
+
+  const updateQuantity = (itemId: string, quantity: number) => {
     if (quantity <= 0) {
-      removeItem(menuItemId);
+      removeItem(itemId);
       return;
     }
 
-    setItems((prevItems) =>
-      prevItems.map((item) =>
-        item.menuItem.id === menuItemId ? { ...item, quantity } : item
+    setItems(
+      items.map((item) =>
+        item.menuItem.id === itemId ? { ...item, quantity } : item
       )
     );
   };
@@ -129,23 +99,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({
     setItems([]);
   };
 
-  const total = items.reduce(
-    (sum, item) => sum + item.menuItem.price * item.quantity,
-    0
-  );
-
-  const count = items.reduce((sum, item) => sum + item.quantity, 0);
-
   return (
     <CartContext.Provider
       value={{
         items,
+        cart,
         addItem,
         removeItem,
         updateQuantity,
         clearCart,
-        total,
-        count,
       }}
     >
       {children}

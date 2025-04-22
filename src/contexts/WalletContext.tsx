@@ -1,46 +1,37 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { Transaction } from "@/types";
 import { useAuth } from "./AuthContext";
-import { useToast } from "@/hooks/use-toast";
-
-interface Transaction {
-  id: string;
-  userId: string;
-  amount: number;
-  type: "credit" | "debit";
-  description: string;
-  createdAt: Date;
-}
+import { transactions as initialTransactions } from "@/data/transactions";
 
 interface WalletContextType {
   balance: number;
   transactions: Transaction[];
   isLoading: boolean;
-  addFunds: (amount: number) => Promise<void>;
-  makePayment: (amount: number, description: string) => Promise<boolean>;
+  error: string | null;
+  addTransaction: (type: "credit" | "debit" | "payment" | "deposit", amount: number, description: string) => Promise<void>;
+  refreshWallet: () => void;
 }
 
 const WalletContext = createContext<WalletContextType>({
   balance: 0,
   transactions: [],
   isLoading: true,
-  addFunds: async () => {},
-  makePayment: async () => false,
+  error: null,
+  addTransaction: async () => {},
+  refreshWallet: () => {},
 });
 
 export const useWallet = () => useContext(WalletContext);
 
-export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const { toast } = useToast();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [balance, setBalance] = useState<number>(0);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load wallet data when user changes
-  useEffect(() => {
+  const loadWalletData = async () => {
     if (!user) {
       setBalance(0);
       setTransactions([]);
@@ -48,131 +39,91 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
+    setIsLoading(true);
     try {
-      // Set initial balance from user
-      setBalance(user.walletBalance || 0);
-
-      // Load transactions from localStorage
-      const storedTransactions = localStorage.getItem(`smartCafeteria_wallet_tx_${user.id}`);
-      if (storedTransactions) {
-        const parsedTransactions = JSON.parse(storedTransactions).map((tx: any) => ({
-          ...tx,
-          createdAt: new Date(tx.createdAt),
-        }));
-        setTransactions(parsedTransactions);
-      } else {
-        // Initialize with an empty array
-        setTransactions([]);
-      }
-    } catch (error) {
-      console.error("Failed to load wallet data:", error);
+      // In a real app, you'd fetch from an API
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Filter transactions for the current user
+      const userTransactions = initialTransactions.filter(
+        transaction => transaction.userId === user.id
+      );
+      
+      setTransactions(userTransactions);
+      
+      // Calculate balance from transactions
+      const userBalance = user.walletBalance || 0;
+      setBalance(userBalance);
+      
+      setError(null);
+    } catch (err) {
+      setError("Failed to load wallet data");
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
-
-  // Save transactions to localStorage when they change
-  useEffect(() => {
-    if (user && !isLoading) {
-      localStorage.setItem(`smartCafeteria_wallet_tx_${user.id}`, JSON.stringify(transactions));
-    }
-  }, [transactions, user, isLoading]);
-
-  const addFunds = async (amount: number): Promise<void> => {
-    if (!user) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to add funds to your wallet.",
-        variant: "destructive",
-      });
-      throw new Error("Authentication required");
-    }
-
-    if (amount <= 0) {
-      toast({
-        title: "Invalid Amount",
-        description: "Please enter a valid amount to add.",
-        variant: "destructive",
-      });
-      throw new Error("Invalid amount");
-    }
-
-    // Create a new transaction
-    const newTransaction: Transaction = {
-      id: `tx_${Date.now()}`,
-      userId: user.id,
-      amount,
-      type: "credit",
-      description: "Added funds to wallet",
-      createdAt: new Date(),
-    };
-
-    // Update balance and transactions
-    setBalance((prev) => prev + amount);
-    setTransactions((prev) => [newTransaction, ...prev]);
-
-    // Update user wallet balance in localStorage
-    const updatedUser = { ...user, walletBalance: user.walletBalance + amount };
-    localStorage.setItem("smartCafeteriaUser", JSON.stringify(updatedUser));
-
-    toast({
-      title: "Funds Added",
-      description: `₹${amount} has been added to your wallet.`,
-    });
   };
 
-  const makePayment = async (amount: number, description: string): Promise<boolean> => {
+  // Load wallet data when user changes
+  useEffect(() => {
+    loadWalletData();
+  }, [user]);
+
+  const addTransaction = async (
+    transactionType: "credit" | "debit" | "payment" | "deposit", 
+    amount: number, 
+    description: string
+  ) => {
     if (!user) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to make a payment.",
-        variant: "destructive",
-      });
-      return false;
+      throw new Error("User not authenticated");
     }
 
-    if (amount <= 0) {
-      toast({
-        title: "Invalid Amount",
-        description: "Payment amount must be greater than zero.",
-        variant: "destructive",
-      });
-      return false;
+    try {
+      // Validate amount
+      if (amount <= 0) {
+        throw new Error("Amount must be greater than zero");
+      }
+
+      // For debit/payment transactions, check if sufficient balance
+      if ((transactionType === "debit" || transactionType === "payment") && amount > balance) {
+        throw new Error("Insufficient balance");
+      }
+
+      // Map to the actual transaction type
+      const actualType = transactionType === "payment" || transactionType === "debit" 
+        ? "debit" 
+        : "credit";
+
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // In a real app, this would be done on the server
+      const newTransaction: Transaction = {
+        id: `transaction-${Date.now()}`,
+        userId: user.id,
+        type: actualType,
+        amount,
+        description,
+        createdAt: new Date(),
+        status: "completed",
+      };
+      
+      // Update local state
+      setTransactions(prev => [...prev, newTransaction]);
+      setBalance(prev => 
+        actualType === "credit" ? prev + amount : prev - amount
+      );
+      
+      return;
+    } catch (err) {
+      setError("Transaction failed");
+      console.error(err);
+      throw err;
     }
+  };
 
-    if (balance < amount) {
-      toast({
-        title: "Insufficient Balance",
-        description: "You don't have enough funds in your wallet.",
-        variant: "destructive",
-      });
-      return false;
-    }
-
-    // Create a new transaction
-    const newTransaction: Transaction = {
-      id: `tx_${Date.now()}`,
-      userId: user.id,
-      amount,
-      type: "debit",
-      description,
-      createdAt: new Date(),
-    };
-
-    // Update balance and transactions
-    setBalance((prev) => prev - amount);
-    setTransactions((prev) => [newTransaction, ...prev]);
-
-    // Update user wallet balance in localStorage
-    const updatedUser = { ...user, walletBalance: user.walletBalance - amount };
-    localStorage.setItem("smartCafeteriaUser", JSON.stringify(updatedUser));
-
-    toast({
-      title: "Payment Successful",
-      description: `₹${amount} has been debited from your wallet.`,
-    });
-
-    return true;
+  const refreshWallet = () => {
+    loadWalletData();
   };
 
   return (
@@ -181,8 +132,9 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({
         balance,
         transactions,
         isLoading,
-        addFunds,
-        makePayment,
+        error,
+        addTransaction,
+        refreshWallet,
       }}
     >
       {children}

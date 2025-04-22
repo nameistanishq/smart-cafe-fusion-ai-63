@@ -1,78 +1,128 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
 import { useWaste } from "@/contexts/WasteContext";
-import { WasteRecord } from "@/types";
-import {
-  Search,
-  Plus,
-  Trash2,
-  Info,
-  BarChart3,
-  PieChart,
-  CalendarRange,
-  Loader2,
-} from "lucide-react";
+import { useInventory } from "@/contexts/InventoryContext";
+import { WasteRecord, InventoryItem } from "@/types";
+import { Trash2, PlusCircle, CalendarDays, DollarSign } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  PieChart as RechartsPieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, PieChart, Pie, Cell } from "recharts";
 
 const WasteManager: React.FC = () => {
-  const { wasteRecords, addRecord, getTotalWasteCost, isLoading } = useWaste();
+  const { wasteRecords, addWasteRecord, isLoading, getTotalWasteCost } = useWaste();
+  const { inventoryItems } = useInventory();
   const { toast } = useToast();
 
-  const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<string>("");
+  const [quantity, setQuantity] = useState<number>(0);
+  const [reason, setReason] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
+  const [timeFrame, setTimeFrame] = useState<"week" | "month" | "year">("week");
 
-  // New waste record form state
-  const [newRecord, setNewRecord] = useState<Omit<WasteRecord, "id">>({
-    itemName: "",
-    quantity: 0,
-    reason: "End of day leftovers",
-    date: new Date(),
-    cost: 0,
-  });
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [pieData, setPieData] = useState<any[]>([]);
 
-  const handleAddRecord = async () => {
-    if (!newRecord.itemName || newRecord.quantity <= 0 || newRecord.cost <= 0) {
+  useEffect(() => {
+    // Process data for charts
+    if (wasteRecords.length > 0) {
+      processChartData();
+      processPieData();
+    }
+  }, [wasteRecords, timeFrame]);
+
+  const processChartData = () => {
+    // Group waste records by day for the chart
+    const startDate = new Date();
+    if (timeFrame === "week") {
+      startDate.setDate(startDate.getDate() - 7);
+    } else if (timeFrame === "month") {
+      startDate.setMonth(startDate.getMonth() - 1);
+    } else {
+      startDate.setFullYear(startDate.getFullYear() - 1);
+    }
+
+    const filteredRecords = wasteRecords.filter(
+      (record) => new Date(record.date) >= startDate
+    );
+
+    // Group by day and sum costs
+    const groupedData: { [key: string]: number } = {};
+    
+    filteredRecords.forEach((record) => {
+      const dateStr = new Date(record.date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      });
+      
+      if (!groupedData[dateStr]) {
+        groupedData[dateStr] = 0;
+      }
+      groupedData[dateStr] += record.cost;
+    });
+
+    // Convert to chart data format
+    const chartData = Object.keys(groupedData).map((date) => ({
+      date,
+      cost: groupedData[date],
+    }));
+
+    // Sort by date
+    chartData.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      return dateA.getTime() - dateB.getTime();
+    });
+
+    setChartData(chartData);
+  };
+
+  const processPieData = () => {
+    // Group waste records by reason for the pie chart
+    const groupedData: { [key: string]: number } = {};
+    
+    wasteRecords.forEach((record) => {
+      if (!groupedData[record.reason]) {
+        groupedData[record.reason] = 0;
+      }
+      groupedData[record.reason] += record.cost;
+    });
+
+    // Convert to pie chart data format
+    const pieData = Object.keys(groupedData).map((reason) => ({
+      name: reason,
+      value: groupedData[reason],
+    }));
+
+    setPieData(pieData);
+  };
+
+  const handleSubmit = async () => {
+    if (!selectedItem || quantity <= 0 || !reason) {
       toast({
         variant: "destructive",
-        title: "Invalid Input",
-        description: "Please fill all required fields with valid values.",
+        title: "Missing Information",
+        description: "Please fill in all fields.",
       });
       return;
     }
@@ -80,210 +130,127 @@ const WasteManager: React.FC = () => {
     setIsSaving(true);
 
     try {
-      await addRecord({
-        ...newRecord,
+      const inventoryItem = inventoryItems.find(
+        (item) => item.id === selectedItem
+      );
+      
+      if (!inventoryItem) {
+        throw new Error("Selected item not found");
+      }
+
+      // Calculate the cost based on inventory item price
+      const cost = inventoryItem.price * quantity;
+
+      await addWasteRecord({
+        itemName: inventoryItem.name,
+        quantity,
+        reason,
+        cost,
         date: new Date(),
       });
+
       setIsAddDialogOpen(false);
-      setNewRecord({
-        itemName: "",
-        quantity: 0,
-        reason: "End of day leftovers",
-        date: new Date(),
-        cost: 0,
-      });
+      setSelectedItem("");
+      setQuantity(0);
+      setReason("");
+
       toast({
-        title: "Record Added",
-        description: "The waste record has been added successfully.",
+        title: "Waste Record Added",
+        description: "The waste record has been successfully added.",
       });
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to add record. Please try again.",
+        description: "Failed to add waste record. Please try again.",
       });
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Filter records
-  const filteredRecords = wasteRecords.filter((record) =>
-    record.itemName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Get statistics for charts
-  const getChartData = () => {
-    // Group by reasons
-    const reasonsData = filteredRecords.reduce((acc, record) => {
-      const reason = record.reason;
-      if (!acc[reason]) {
-        acc[reason] = {
-          name: reason,
-          value: 0,
-          cost: 0,
-        };
-      }
-      acc[reason].value += record.quantity;
-      acc[reason].cost += record.cost;
-      return acc;
-    }, {} as Record<string, { name: string; value: number; cost: number }>);
-
-    // Group by item names (top items)
-    const itemsData = filteredRecords.reduce((acc, record) => {
-      const item = record.itemName;
-      if (!acc[item]) {
-        acc[item] = {
-          name: item,
-          value: 0,
-          cost: 0,
-        };
-      }
-      acc[item].value += record.quantity;
-      acc[item].cost += record.cost;
-      return acc;
-    }, {} as Record<string, { name: string; value: number; cost: number }>);
-
-    // Sort by cost and limit to top 5
-    const topItems = Object.values(itemsData)
-      .sort((a, b) => b.cost - a.cost)
-      .slice(0, 5);
-
-    // Group by date (last 7 days)
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-    const dailyData: Record<string, { date: string; cost: number }> = {};
-
-    // Initialize all days in the past week
-    for (let i = 0; i < 7; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().split('T')[0];
-      dailyData[dateStr] = { date: dateStr, cost: 0 };
-    }
-
-    // Fill in data
-    filteredRecords.forEach((record) => {
-      const recordDate = new Date(record.date);
-      if (recordDate >= oneWeekAgo) {
-        const dateStr = recordDate.toISOString().split('T')[0];
-        if (dailyData[dateStr]) {
-          dailyData[dateStr].cost += record.cost;
-        }
-      }
-    });
-
-    return {
-      reasonsData: Object.values(reasonsData),
-      topItems,
-      dailyData: Object.values(dailyData).sort((a, b) => a.date.localeCompare(b.date)),
-    };
-  };
-
-  const { reasonsData, topItems, dailyData } = getChartData();
-
-  // Chart colors
-  const colors = ["#FF7E33", "#8B5CF6", "#10B981", "#F472B6", "#60A5FA"];
-
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString();
+    return new Date(date).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
   };
 
   const formatCurrency = (value: number) => {
     return `₹${value.toFixed(2)}`;
   };
 
+  // Colors for pie chart
+  const COLORS = ["#FF7E33", "#8B5CF6", "#10B981", "#F472B6", "#60A5FA"];
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-auto sm:min-w-[300px]">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-cafe-text/50" />
-          <Input
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Search waste records..."
-            className="pl-10 bg-cafe-surface border-cafe-primary/20 text-cafe-text"
-          />
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div>
+          <h2 className="text-xl font-bold text-cafe-text">Food Waste Management</h2>
+          <p className="text-cafe-text/70">
+            Track and analyze food waste to optimize inventory and reduce costs
+          </p>
         </div>
 
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="bg-cafe-primary hover:bg-cafe-primary/90">
-              <Plus className="mr-2 h-4 w-4" /> Add Waste Record
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Record Waste
             </Button>
           </DialogTrigger>
+
           <DialogContent className="bg-cafe-surface border-cafe-primary/20 text-cafe-text">
             <DialogHeader>
-              <DialogTitle>Add Waste Record</DialogTitle>
-              <DialogDescription className="text-cafe-text/70">
-                Document food waste for better inventory management.
-              </DialogDescription>
+              <DialogTitle>Record Food Waste</DialogTitle>
             </DialogHeader>
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="itemName">Item Name</Label>
-                <Input
-                  id="itemName"
-                  value={newRecord.itemName}
-                  onChange={(e) =>
-                    setNewRecord({ ...newRecord, itemName: e.target.value })
-                  }
-                  placeholder="Enter item name"
-                  className="bg-cafe-dark border-cafe-primary/20 text-cafe-text"
-                />
+                <Label htmlFor="item">Item</Label>
+                <Select
+                  value={selectedItem}
+                  onValueChange={setSelectedItem}
+                >
+                  <SelectTrigger
+                    id="item"
+                    className="bg-cafe-dark border-cafe-primary/20 text-cafe-text"
+                  >
+                    <SelectValue placeholder="Select an item" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-cafe-surface border-cafe-primary/20 text-cafe-text">
+                    {inventoryItems.map((item) => (
+                      <SelectItem key={item.id} value={item.id}>
+                        {item.name} ({item.unit})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="quantity">Quantity</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    value={newRecord.quantity || ""}
-                    onChange={(e) =>
-                      setNewRecord({
-                        ...newRecord,
-                        quantity: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    min="0"
-                    step="0.1"
-                    placeholder="0"
-                    className="bg-cafe-dark border-cafe-primary/20 text-cafe-text"
-                  />
-                </div>
-
-                <div className="grid gap-2">
-                  <Label htmlFor="cost">Cost Value (₹)</Label>
-                  <Input
-                    id="cost"
-                    type="number"
-                    value={newRecord.cost || ""}
-                    onChange={(e) =>
-                      setNewRecord({
-                        ...newRecord,
-                        cost: parseFloat(e.target.value) || 0,
-                      })
-                    }
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    className="bg-cafe-dark border-cafe-primary/20 text-cafe-text"
-                  />
-                </div>
+              <div className="grid gap-2">
+                <Label htmlFor="quantity">Quantity</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  value={quantity || ""}
+                  onChange={(e) => setQuantity(Number(e.target.value))}
+                  min="0.1"
+                  step="0.1"
+                  placeholder="0.0"
+                  className="bg-cafe-dark border-cafe-primary/20 text-cafe-text"
+                />
               </div>
 
               <div className="grid gap-2">
                 <Label htmlFor="reason">Reason</Label>
                 <Textarea
                   id="reason"
-                  value={newRecord.reason}
-                  onChange={(e) =>
-                    setNewRecord({ ...newRecord, reason: e.target.value })
-                  }
-                  placeholder="Explain the reason for waste"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Why is this being wasted?"
                   className="bg-cafe-dark border-cafe-primary/20 text-cafe-text"
                 />
               </div>
@@ -298,198 +265,125 @@ const WasteManager: React.FC = () => {
                 Cancel
               </Button>
               <Button
-                onClick={handleAddRecord}
+                onClick={handleSubmit}
                 disabled={isSaving}
                 className="bg-cafe-primary hover:bg-cafe-primary/90"
               >
                 {isSaving ? (
                   <div className="h-5 w-5 rounded-full border-2 border-white border-t-transparent animate-spin mr-2" />
                 ) : null}
-                {isSaving ? "Saving..." : "Add Record"}
+                {isSaving ? "Saving..." : "Save Record"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="bg-cafe-surface border-cafe-primary/20">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <Trash2 className="h-5 w-5 text-cafe-primary" />
-              <h3 className="text-lg font-medium text-cafe-text">
-                Total Waste Cost
-              </h3>
-            </div>
-            <div className="mt-2 text-2xl font-bold text-cafe-text">
-              {formatCurrency(getTotalWasteCost())}
-            </div>
-            <p className="text-xs text-cafe-text/70 mt-1">
-              Cumulative waste value
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-cafe-surface border-cafe-primary/20">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <BarChart3 className="h-5 w-5 text-cafe-secondary" />
-              <h3 className="text-lg font-medium text-cafe-text">
-                Total Incidents
-              </h3>
-            </div>
-            <div className="mt-2 text-2xl font-bold text-cafe-text">
-              {wasteRecords.length}
-            </div>
-            <p className="text-xs text-cafe-text/70 mt-1">
-              Recorded waste incidents
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-cafe-surface border-cafe-primary/20 lg:col-span-2">
-          <CardContent className="p-6">
-            <div className="flex items-center space-x-2">
-              <Info className="h-5 w-5 text-cafe-accent" />
-              <h3 className="text-lg font-medium text-cafe-text">Waste Insights</h3>
-            </div>
-            <p className="mt-2 text-cafe-text/70">
-              Top waste reasons: 
-              {reasonsData.length > 0 
-                ? ` ${reasonsData
-                    .sort((a, b) => b.cost - a.cost)
-                    .slice(0, 3)
-                    .map(r => r.name)
-                    .join(', ')}`
-                : ' No data available'
-              }
-            </p>
-            <p className="mt-1 text-cafe-text/70">
-              Most wasted item: 
-              {topItems.length > 0 
-                ? ` ${topItems[0].name} (${formatCurrency(topItems[0].cost)})`
-                : ' No data available'
-              }
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs defaultValue="records" className="w-full">
-        <TabsList className="grid grid-cols-3 w-full max-w-md mx-auto bg-cafe-surface">
-          <TabsTrigger value="records" className="data-[state=active]:bg-cafe-primary data-[state=active]:text-white">
-            Records
-          </TabsTrigger>
-          <TabsTrigger value="trends" className="data-[state=active]:bg-cafe-primary data-[state=active]:text-white">
-            Trends
-          </TabsTrigger>
-          <TabsTrigger value="analysis" className="data-[state=active]:bg-cafe-primary data-[state=active]:text-white">
-            Analysis
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="records" className="mt-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0 }}
+        >
           <Card className="bg-cafe-surface border-cafe-primary/20">
             <CardHeader className="pb-2">
-              <CardTitle className="text-cafe-text">Waste Records</CardTitle>
+              <CardTitle className="text-lg font-medium flex items-center text-cafe-text">
+                <DollarSign className="h-5 w-5 mr-2 text-red-500" />
+                Total Waste Cost
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-8 w-8 animate-spin text-cafe-primary" />
-                </div>
-              ) : filteredRecords.length === 0 ? (
-                <div className="text-center py-8 text-cafe-text/70">
-                  {searchTerm
-                    ? "No records match your search."
-                    : "No waste records found. Start tracking food waste to optimize your inventory."}
-                </div>
-              ) : (
-                <div className="rounded-md border border-cafe-primary/20 overflow-hidden">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-cafe-dark hover:bg-cafe-dark/90">
-                        <TableHead className="text-cafe-text/70">
-                          Item Name
-                        </TableHead>
-                        <TableHead className="text-cafe-text/70 text-right">
-                          Quantity
-                        </TableHead>
-                        <TableHead className="text-cafe-text/70">
-                          Reason
-                        </TableHead>
-                        <TableHead className="text-cafe-text/70 text-right">
-                          Cost Value
-                        </TableHead>
-                        <TableHead className="text-cafe-text/70 text-right">
-                          Date
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredRecords.map((record) => (
-                        <TableRow
-                          key={record.id}
-                          className="bg-cafe-surface border-t border-cafe-primary/10 hover:bg-cafe-primary/5"
-                        >
-                          <TableCell className="font-medium text-cafe-text">
-                            {record.itemName}
-                          </TableCell>
-                          <TableCell className="text-right text-cafe-text">
-                            {record.quantity}
-                          </TableCell>
-                          <TableCell className="text-cafe-text/70">
-                            {record.reason}
-                          </TableCell>
-                          <TableCell className="text-right font-medium text-cafe-text">
-                            {formatCurrency(record.cost)}
-                          </TableCell>
-                          <TableCell className="text-right text-cafe-text/70">
-                            {formatDate(record.date)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
+              <div className="text-3xl font-bold text-cafe-text">
+                {formatCurrency(getTotalWasteCost())}
+              </div>
+              <p className="text-cafe-text/70 text-sm">Last 30 days</p>
             </CardContent>
           </Card>
-        </TabsContent>
+        </motion.div>
 
-        <TabsContent value="trends" className="mt-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.1 }}
+        >
+          <Card className="bg-cafe-surface border-cafe-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center text-cafe-text">
+                <Trash2 className="h-5 w-5 mr-2 text-amber-500" />
+                Total Waste Records
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-cafe-text">
+                {wasteRecords.length}
+              </div>
+              <p className="text-cafe-text/70 text-sm">All time records</p>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.2 }}
+        >
+          <Card className="bg-cafe-surface border-cafe-primary/20">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium flex items-center text-cafe-text">
+                <CalendarDays className="h-5 w-5 mr-2 text-blue-500" />
+                Time Frame
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Select value={timeFrame} onValueChange={(value: any) => setTimeFrame(value)}>
+                <SelectTrigger className="bg-cafe-dark border-cafe-primary/20 text-cafe-text">
+                  <SelectValue placeholder="Select time frame" />
+                </SelectTrigger>
+                <SelectContent className="bg-cafe-surface border-cafe-primary/20 text-cafe-text">
+                  <SelectItem value="week">Last Week</SelectItem>
+                  <SelectItem value="month">Last Month</SelectItem>
+                  <SelectItem value="year">Last Year</SelectItem>
+                </SelectContent>
+              </Select>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+        >
           <Card className="bg-cafe-surface border-cafe-primary/20">
             <CardHeader>
-              <CardTitle className="flex items-center text-cafe-text">
-                <CalendarRange className="mr-2 h-5 w-5 text-cafe-primary" />
-                Daily Waste Trends (Last 7 Days)
-              </CardTitle>
+              <CardTitle className="text-cafe-text">Waste Cost Over Time</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={dailyData}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                    data={chartData}
+                    margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#FFFFFF20" />
-                    <XAxis 
-                      dataKey="date" 
+                    <XAxis
+                      dataKey="date"
                       stroke="#F8F9FA80"
                       tick={{ fill: "#F8F9FA80", fontSize: 12 }}
                     />
-                    <YAxis 
+                    <YAxis
                       stroke="#F8F9FA80"
                       tick={{ fill: "#F8F9FA80", fontSize: 12 }}
                       tickFormatter={(value) => `₹${value}`}
                     />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: "#1E1E1E", 
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#1E1E1E",
                         borderColor: "#FF7E3340",
-                        color: "#F8F9FA"
+                        color: "#F8F9FA",
                       }}
-                      formatter={(value: number) => [`₹${value}`, "Waste Cost"]}
+                      formatter={(value: number) => [`₹${value}`, "Cost"]}
                       labelStyle={{ color: "#F8F9FA" }}
                     />
                     <Bar dataKey="cost" fill="#FF7E33" radius={[4, 4, 0, 0]} />
@@ -498,98 +392,113 @@ const WasteManager: React.FC = () => {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
+        </motion.div>
 
-        <TabsContent value="analysis" className="mt-4">
-          <div className="grid gap-6 grid-cols-1 md:grid-cols-2">
-            <Card className="bg-cafe-surface border-cafe-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center text-cafe-text">
-                  <PieChart className="mr-2 h-5 w-5 text-cafe-secondary" />
-                  Waste by Reason
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
-                      <Pie
-                        data={reasonsData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={60}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        paddingAngle={3}
-                        dataKey="cost"
-                        label={({ name }) => name}
-                        labelLine={{ stroke: "#F8F9FA40" }}
-                      >
-                        {reasonsData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: "#1E1E1E", 
-                          borderColor: "#FF7E3340",
-                          color: "#F8F9FA"
-                        }}
-                        formatter={(value: number) => [`₹${value}`, "Cost"]}
-                        labelStyle={{ color: "#F8F9FA" }}
-                      />
-                    </RechartsPieChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-cafe-surface border-cafe-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center text-cafe-text">
-                  <BarChart3 className="mr-2 h-5 w-5 text-cafe-accent" />
-                  Top Wasted Items
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={topItems}
-                      layout="vertical"
-                      margin={{ top: 20, right: 30, left: 60, bottom: 20 }}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.4 }}
+        >
+          <Card className="bg-cafe-surface border-cafe-primary/20">
+            <CardHeader>
+              <CardTitle className="text-cafe-text">Waste by Reason</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="value"
                     >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#FFFFFF20" />
-                      <XAxis 
-                        type="number" 
-                        stroke="#F8F9FA80"
-                        tick={{ fill: "#F8F9FA80", fontSize: 12 }}
-                        tickFormatter={(value) => `₹${value}`}
-                      />
-                      <YAxis 
-                        type="category" 
-                        dataKey="name" 
-                        stroke="#F8F9FA80"
-                        tick={{ fill: "#F8F9FA80", fontSize: 12 }}
-                      />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: "#1E1E1E", 
-                          borderColor: "#FF7E3340",
-                          color: "#F8F9FA"
-                        }}
-                        formatter={(value: number) => [`₹${value}`, "Waste Cost"]}
-                        labelStyle={{ color: "#F8F9FA" }}
-                      />
-                      <Bar dataKey="cost" fill="#8B5CF6" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-      </Tabs>
+                      {pieData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      formatter={(value: number) => [`₹${value}`, "Cost"]}
+                      contentStyle={{
+                        backgroundColor: "#1E1E1E",
+                        borderColor: "#FF7E3340",
+                        color: "#F8F9FA",
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, delay: 0.5 }}
+      >
+        <Card className="bg-cafe-surface border-cafe-primary/20">
+          <CardHeader>
+            <CardTitle className="text-cafe-text">Recent Waste Records</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="h-8 w-8 rounded-full border-4 border-cafe-primary border-t-transparent animate-spin" />
+              </div>
+            ) : wasteRecords.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-cafe-text/70">No waste records found</p>
+              </div>
+            ) : (
+              <div className="overflow-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="text-left border-b border-cafe-primary/20">
+                      <th className="pb-2 font-medium text-cafe-text/70">Date</th>
+                      <th className="pb-2 font-medium text-cafe-text/70">Item</th>
+                      <th className="pb-2 font-medium text-cafe-text/70">Quantity</th>
+                      <th className="pb-2 font-medium text-cafe-text/70">Reason</th>
+                      <th className="pb-2 font-medium text-cafe-text/70 text-right">Cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wasteRecords
+                      .slice(0, 10)
+                      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                      .map((record) => (
+                        <tr
+                          key={record.id}
+                          className="border-b border-cafe-primary/10 hover:bg-cafe-primary/5"
+                        >
+                          <td className="py-3 text-cafe-text">
+                            {formatDate(record.date)}
+                          </td>
+                          <td className="py-3 text-cafe-text">{record.itemName}</td>
+                          <td className="py-3 text-cafe-text">
+                            {record.quantity} {/* units */}
+                          </td>
+                          <td className="py-3 text-cafe-text">{record.reason}</td>
+                          <td className="py-3 text-cafe-text text-right font-medium text-red-500">
+                            {formatCurrency(record.cost)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 };

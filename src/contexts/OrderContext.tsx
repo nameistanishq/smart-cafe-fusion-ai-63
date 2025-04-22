@@ -1,126 +1,151 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { Order, OrderItem } from "@/types";
-import { useAuth } from "./AuthContext";
+import { Order, OrderStatus } from "@/types";
+import { orders as initialOrders } from "@/data/orders";
 
 interface OrderContextType {
   orders: Order[];
   isLoading: boolean;
-  createNewOrder: (orderData: Omit<Order, "id" | "orderNumber" | "createdAt">) => Promise<Order>;
-  updateOrderStatus: (orderId: string, status: Order["status"]) => Promise<Order>;
-  cancelOrder: (orderId: string) => Promise<void>;
-  getOrderById: (orderId: string) => Order | undefined;
-  getUserOrders: () => Order[];
+  error: string | null;
+  getOrderById: (id: string) => Order | undefined;
+  getOrder: (id: string) => Promise<Order>;
+  createNewOrder: (orderData: Partial<Order>) => Promise<Order>;
+  updateStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  refreshOrders: () => void;
 }
 
 const OrderContext = createContext<OrderContextType>({
   orders: [],
   isLoading: true,
-  createNewOrder: async () => ({} as Order),
-  updateOrderStatus: async () => ({} as Order),
-  cancelOrder: async () => {},
+  error: null,
   getOrderById: () => undefined,
-  getUserOrders: () => [],
+  getOrder: async () => ({ 
+    id: "", 
+    orderNumber: "", 
+    userId: "", 
+    userName: "", 
+    items: [], 
+    subtotal: 0, 
+    tax: 0, 
+    total: 0, 
+    status: "pending", 
+    paymentMethod: "cash", 
+    paymentStatus: "pending", 
+    createdAt: new Date() 
+  }),
+  createNewOrder: async () => ({ 
+    id: "", 
+    orderNumber: "", 
+    userId: "", 
+    userName: "", 
+    items: [], 
+    subtotal: 0, 
+    tax: 0, 
+    total: 0, 
+    status: "pending", 
+    paymentMethod: "cash", 
+    paymentStatus: "pending", 
+    createdAt: new Date() 
+  }),
+  updateStatus: async () => {},
+  refreshOrders: () => {},
 });
 
 export const useOrder = () => useContext(OrderContext);
 
-// Generate a 6-digit random order number
-const generateOrderNumber = (): string => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
-};
-
-export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const { user } = useAuth();
+  const [error, setError] = useState<string | null>(null);
 
-  // Load orders from localStorage
-  useEffect(() => {
+  const loadOrders = async () => {
+    setIsLoading(true);
     try {
-      const storedOrders = localStorage.getItem("smartCafeteriaOrders");
-      if (storedOrders) {
-        const parsedOrders = JSON.parse(storedOrders).map((order: any) => ({
-          ...order,
-          createdAt: new Date(order.createdAt),
-          estimatedReadyTime: order.estimatedReadyTime ? new Date(order.estimatedReadyTime) : undefined,
-          completedAt: order.completedAt ? new Date(order.completedAt) : undefined,
-        }));
-        setOrders(parsedOrders);
-      }
-    } catch (error) {
-      console.error("Failed to load orders:", error);
+      // In a real app, you'd fetch from an API
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      setOrders(initialOrders);
+      setError(null);
+    } catch (err) {
+      setError("Failed to load orders");
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Initial load
+  useEffect(() => {
+    loadOrders();
   }, []);
 
-  // Save orders to localStorage when they change
-  useEffect(() => {
-    if (!isLoading) {
-      localStorage.setItem("smartCafeteriaOrders", JSON.stringify(orders));
+  const getOrderById = (id: string) => {
+    return orders.find(order => order.id === id);
+  };
+
+  const getOrder = async (id: string): Promise<Order> => {
+    const order = orders.find(order => order.id === id);
+    if (!order) {
+      throw new Error(`Order with ID ${id} not found`);
     }
-  }, [orders, isLoading]);
-
-  const createNewOrder = async (
-    orderData: Omit<Order, "id" | "orderNumber" | "createdAt">
-  ): Promise<Order> => {
-    const newOrder: Order = {
-      ...orderData,
-      id: `order_${Date.now()}`,
-      orderNumber: generateOrderNumber(),
-      createdAt: new Date(),
-      estimatedReadyTime: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes from now
-    };
-
-    setOrders((prevOrders) => [...prevOrders, newOrder]);
-    return newOrder;
+    return order;
   };
 
-  const updateOrderStatus = async (
-    orderId: string,
-    status: Order["status"]
-  ): Promise<Order> => {
-    let updatedOrder: Order | undefined;
-
-    setOrders((prevOrders) =>
-      prevOrders.map((order) => {
-        if (order.id === orderId) {
-          const updates: Partial<Order> = { status };
-          
-          if (status === "delivered" || status === "cancelled") {
-            updates.completedAt = new Date();
-          }
-          
-          updatedOrder = { ...order, ...updates };
-          return updatedOrder;
-        }
-        return order;
-      })
-    );
-
-    if (!updatedOrder) {
-      throw new Error(`Order with id ${orderId} not found`);
+  const createNewOrder = async (orderData: Partial<Order>): Promise<Order> => {
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Generate order number
+      const orderNumber = `ORD${Math.floor(100000 + Math.random() * 900000)}`;
+      
+      // In a real app, the ID would be generated on the server
+      const newOrder: Order = {
+        id: `order-${Date.now()}`,
+        orderNumber,
+        userId: orderData.userId || "guest",
+        userName: orderData.userName || "Guest User",
+        items: orderData.items || [],
+        subtotal: orderData.subtotal || 0,
+        tax: orderData.tax || 0,
+        total: orderData.total || 0,
+        status: orderData.status || "pending",
+        paymentMethod: orderData.paymentMethod || "cash",
+        paymentStatus: orderData.paymentStatus || "pending",
+        createdAt: new Date(),
+        estimatedReadyTime: new Date(Date.now() + 20 * 60 * 1000), // 20 minutes from now
+        razorpayOrderId: orderData.razorpayOrderId,
+      };
+      
+      setOrders(prevOrders => [...prevOrders, newOrder]);
+      return newOrder;
+    } catch (err) {
+      setError("Failed to create new order");
+      console.error(err);
+      throw err;
     }
-
-    return updatedOrder;
   };
 
-  const cancelOrder = async (orderId: string): Promise<void> => {
-    await updateOrderStatus(orderId, "cancelled");
+  const updateStatus = async (orderId: string, status: OrderStatus) => {
+    try {
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Update local state
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === orderId ? { ...order, status } : order
+        )
+      );
+    } catch (err) {
+      setError("Failed to update order status");
+      console.error(err);
+      throw err;
+    }
   };
 
-  const getOrderById = (orderId: string): Order | undefined => {
-    return orders.find((order) => order.id === orderId);
-  };
-
-  const getUserOrders = (): Order[] => {
-    if (!user) return [];
-    return orders
-      .filter((order) => order.userId === user.id)
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const refreshOrders = () => {
+    loadOrders();
   };
 
   return (
@@ -128,11 +153,12 @@ export const OrderProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         orders,
         isLoading,
-        createNewOrder,
-        updateOrderStatus,
-        cancelOrder,
+        error,
         getOrderById,
-        getUserOrders,
+        getOrder,
+        createNewOrder,
+        updateStatus,
+        refreshOrders,
       }}
     >
       {children}

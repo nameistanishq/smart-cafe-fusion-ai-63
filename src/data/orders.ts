@@ -4,9 +4,9 @@ import { Order } from "@/types";
 export const orders: Order[] = [
   {
     id: "order-1",
-    orderNumber: "SC123456",
-    userId: "user-1",
-    userName: "Raj Kumar",
+    orderNumber: "ORD123456",
+    userId: "s1",
+    userName: "Alex Student",
     items: [
       {
         menuItemId: "item-1",
@@ -29,44 +29,15 @@ export const orders: Order[] = [
     status: "delivered",
     paymentMethod: "wallet",
     paymentStatus: "completed",
-    createdAt: new Date(Date.now() - 45 * 60000), // 45 minutes ago
-    estimatedDeliveryTime: new Date(Date.now() - 30 * 60000) // 30 minutes ago
+    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+    estimatedReadyTime: new Date(Date.now() - 23.5 * 60 * 60 * 1000),
+    completedAt: new Date(Date.now() - 23.4 * 60 * 60 * 1000)
   },
   {
     id: "order-2",
-    orderNumber: "SC123457",
-    userId: "user-2",
-    userName: "Priya Sharma",
-    items: [
-      {
-        menuItemId: "item-6",
-        name: "Vegetable Biryani",
-        price: 120,
-        quantity: 1,
-        subtotal: 120
-      },
-      {
-        menuItemId: "item-23",
-        name: "Buttermilk",
-        price: 20,
-        quantity: 1,
-        subtotal: 20
-      }
-    ],
-    subtotal: 140,
-    tax: 7,
-    total: 147,
-    status: "preparing",
-    paymentMethod: "upi",
-    paymentStatus: "completed",
-    createdAt: new Date(Date.now() - 15 * 60000), // 15 minutes ago
-    estimatedDeliveryTime: new Date(Date.now() + 5 * 60000) // 5 minutes from now
-  },
-  {
-    id: "order-3",
-    orderNumber: "SC123458",
-    userId: "user-1",
-    userName: "Raj Kumar",
+    orderNumber: "ORD234567",
+    userId: "s1",
+    userName: "Alex Student",
     items: [
       {
         menuItemId: "item-2",
@@ -76,43 +47,97 @@ export const orders: Order[] = [
         subtotal: 60
       },
       {
-        menuItemId: "item-3",
-        name: "Vada",
-        price: 40,
-        quantity: 2,
-        subtotal: 80
+        menuItemId: "item-22",
+        name: "Masala Chai",
+        price: 25,
+        quantity: 1,
+        subtotal: 25
       }
     ],
-    subtotal: 140,
-    tax: 7,
-    total: 147,
-    status: "confirmed",
+    subtotal: 85,
+    tax: 4.25,
+    total: 89.25,
+    status: "delivered",
     paymentMethod: "card",
     paymentStatus: "completed",
-    createdAt: new Date(Date.now() - 5 * 60000), // 5 minutes ago
-    estimatedDeliveryTime: new Date(Date.now() + 15 * 60000) // 15 minutes from now
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+    estimatedReadyTime: new Date(Date.now() - 1.95 * 24 * 60 * 60 * 1000),
+    completedAt: new Date(Date.now() - 1.9 * 24 * 60 * 60 * 1000)
+  },
+  {
+    id: "order-3",
+    orderNumber: "ORD345678",
+    userId: "s2",
+    userName: "Taylor Staff",
+    items: [
+      {
+        menuItemId: "item-6",
+        name: "Vegetable Biryani",
+        price: 120,
+        quantity: 1,
+        subtotal: 120
+      }
+    ],
+    subtotal: 120,
+    tax: 6,
+    total: 126,
+    status: "ready",
+    paymentMethod: "wallet",
+    paymentStatus: "completed",
+    createdAt: new Date(Date.now() - 1 * 60 * 60 * 1000), // 1 hour ago
+    estimatedReadyTime: new Date(Date.now() + 10 * 60 * 1000) // 10 minutes from now
   },
   {
     id: "order-4",
-    orderNumber: "SC123459",
-    userId: "user-2",
-    userName: "Priya Sharma",
+    orderNumber: "ORD456789",
+    userId: "s2",
+    userName: "Taylor Staff",
     items: [
       {
-        menuItemId: "item-18",
-        name: "Payasam",
-        price: 65,
+        menuItemId: "item-8",
+        name: "Vada Sambar",
+        price: 50,
+        quantity: 2,
+        subtotal: 100
+      },
+      {
+        menuItemId: "item-21",
+        name: "Filter Coffee",
+        price: 30,
         quantity: 1,
-        subtotal: 65
+        subtotal: 30
       }
     ],
-    subtotal: 65,
-    tax: 3.25,
-    total: 68.25,
-    status: "pending",
+    subtotal: 130,
+    tax: 6.5,
+    total: 136.5,
+    status: "preparing",
     paymentMethod: "cash",
-    paymentStatus: "pending",
-    createdAt: new Date(Date.now() - 2 * 60000), // 2 minutes ago
-    estimatedDeliveryTime: new Date(Date.now() + 20 * 60000) // 20 minutes from now
+    paymentStatus: "completed",
+    createdAt: new Date(Date.now() - 30 * 60 * 1000), // 30 minutes ago
+    estimatedReadyTime: new Date(Date.now() + 15 * 60 * 1000) // 15 minutes from now
+  },
+  {
+    id: "order-5",
+    orderNumber: "ORD567890",
+    userId: "guest-user",
+    userName: "Guest User",
+    items: [
+      {
+        menuItemId: "item-5",
+        name: "Bisi Bele Bath",
+        price: 90,
+        quantity: 1,
+        subtotal: 90
+      }
+    ],
+    subtotal: 90,
+    tax: 4.5,
+    total: 94.5,
+    status: "confirmed",
+    paymentMethod: "upi",
+    paymentStatus: "completed",
+    createdAt: new Date(Date.now() - 10 * 60 * 1000), // 10 minutes ago
+    estimatedReadyTime: new Date(Date.now() + 20 * 60 * 1000) // 20 minutes from now
   }
 ];
