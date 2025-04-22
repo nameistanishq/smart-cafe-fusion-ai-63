@@ -111,9 +111,7 @@ const MenuPage: React.FC = () => {
 
             {showCart && (
               <div className="mb-6 lg:hidden">
-                <Cart
-
-Summary />
+                <CartSummary />
               </div>
             )}
 
