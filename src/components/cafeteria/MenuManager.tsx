@@ -70,7 +70,19 @@ const MenuManager: React.FC = () => {
   });
 
   const handleToggleAvailability = async (id: string, currentValue: boolean) => {
-    await updateItemAvailability(id, !currentValue);
+    try {
+      await updateItemAvailability(id, !currentValue);
+      toast({
+        title: "Item updated",
+        description: `Item availability has been ${!currentValue ? 'enabled' : 'disabled'}.`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to update item availability. Please try again.",
+      });
+    }
   };
 
   const handleAddMenuItem = async () => {
@@ -101,6 +113,11 @@ const MenuManager: React.FC = () => {
         prepTime: 10,
         ingredients: [],
         tags: [],
+      });
+      
+      toast({
+        title: "Success",
+        description: "New menu item has been added.",
       });
     } catch (error) {
       toast({

@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 import PageContainer from "@/components/shared/PageContainer";
 import PageHeader from "@/components/shared/PageHeader";
 import WalletCard from "@/components/wallet/WalletCard";
+import WalletOperations from "@/components/wallet/WalletOperations";
 import TransactionsList from "@/components/wallet/TransactionsList";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
@@ -41,9 +42,10 @@ const WalletPage: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="md:col-span-1"
+            className="md:col-span-1 space-y-6"
           >
             <WalletCard />
+            <WalletOperations />
           </motion.div>
 
           <motion.div
